@@ -37,12 +37,12 @@
     "lint": "tsc --noEmit"
   },
   "peerDependencies": {
-    "react": "^18.0.0"
+    "react": "^18.0.0",
+    "zod": "^3.0.0"
   },
   "dependencies": {
     "openai": "^4.66.1",
-    "tslib": "^2.6.2",
-    "zod": "^3.23.8"
+    "tslib": "^2.6.2"
   },
   "devDependencies": {
     "@types/react": "^18.3.11",
@@ -56,7 +56,8 @@
     "tsup": "^8.3.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
-    "vitest": "^1.6.0"
+    "vitest": "^1.6.0",
+    "zod": "^3.24.0"
   },
   "engines": {
     "node": ">=18"
