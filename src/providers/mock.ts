@@ -1,16 +1,9 @@
-import { z, ZodSchema } from "zod";
-import { AIExecutionResult, AIProvider, ProviderExecuteArgs } from "../core/types";
+import { z } from "zod";
+import { AIExecutionResult, AIProvider, AnyZodSchema, ProviderExecuteArgs } from "../core/types";
 import { deriveCost } from "../core/cost";
+import { stableStringify } from "../core/utils";
 
-const stableStringify = (value: unknown): string => {
-  try {
-    return JSON.stringify(value, Object.keys(value as object).sort());
-  } catch (error) {
-    return String(value);
-  }
-};
-
-const buildMockData = <T>(schema: ZodSchema<T>, prompt: string, input?: unknown): T => {
+const buildMockData = <T>(schema: AnyZodSchema<T>, prompt: string, input?: unknown): T => {
   const base = `Mock response for: ${prompt}`;
   const withInput = input ? `${base} | input: ${stableStringify(input)}` : base;
   if ((schema as unknown as { _def?: { typeName?: string } })._def?.typeName === z.string()._def.typeName) {

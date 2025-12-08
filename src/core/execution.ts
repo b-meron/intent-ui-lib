@@ -1,5 +1,4 @@
-import { ZodSchema } from "zod";
-import { AIError, AIExecutionResult, CachePolicy, ProviderKind } from "./types";
+import { AIError, AIExecutionResult, AnyZodSchema, CachePolicy, ProviderKind } from "./types";
 import { buildCacheKey, getFromSessionCache, setSessionCache } from "./cache";
 import { deriveCost } from "./cost";
 import { mockProvider } from "../providers/mock";
@@ -21,7 +20,7 @@ const selectProvider = (provider?: ProviderKind) => {
 export const executeAI = async <T>(args: {
   prompt: string;
   input?: unknown;
-  schema: ZodSchema<T>;
+  schema: AnyZodSchema<T>;
   provider?: ProviderKind;
   temperature?: number;
   cache?: CachePolicy;

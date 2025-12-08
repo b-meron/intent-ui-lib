@@ -1,12 +1,6 @@
-const USD_PER_1K_TOKENS = 0.002;
+import { stableStringify } from "./utils";
 
-const stableStringify = (value: unknown) => {
-  try {
-    return JSON.stringify(value);
-  } catch (error) {
-    return String(value);
-  }
-};
+const USD_PER_1K_TOKENS = 0.002;
 
 export const estimateTokens = (prompt: string, input?: unknown): number => {
   const promptTokens = Math.ceil(prompt.length / 4);

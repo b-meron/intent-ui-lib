@@ -1,5 +1,6 @@
 import { AIExecutionResult, AIProvider, ProviderExecuteArgs, AIError } from "../core/types";
 import { deriveCost, estimateUSD } from "../core/cost";
+import { stableStringify } from "../core/utils";
 
 export interface LocalProviderConfig {
   endpoint?: string;
@@ -54,7 +55,7 @@ class LocalProviderImpl implements AIProvider {
         model,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Prompt: ${prompt}\nInput: ${JSON.stringify(input)}` }
+          { role: "user", content: `Prompt: ${prompt}\nInput: ${stableStringify(input)}` }
         ],
         temperature: temperature ?? 0,
         stream: false

@@ -1,7 +1,11 @@
-import { ZodSchema } from "zod";
+import { ZodType } from "zod";
 
 export type ProviderName = "mock" | "openai" | "local";
 export type ProviderKind = ProviderName | AIProvider;
+
+// Use ZodType with relaxed generics to avoid "Type instantiation is excessively deep" errors
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyZodSchema<T = unknown> = ZodType<T, any, any>;
 
 export interface AIExecutionResult<T> {
   data: T;
@@ -13,7 +17,7 @@ export interface AIExecutionResult<T> {
 export interface ProviderExecuteArgs<T> {
   prompt: string;
   input?: unknown;
-  schema: ZodSchema<T>;
+  schema: AnyZodSchema<T>;
   temperature: number;
   signal?: AbortSignal;
 }
@@ -31,7 +35,7 @@ export interface CostBreakdown {
 export interface UseAIOptions<T> {
   prompt: string;
   input?: unknown;
-  schema: ZodSchema<T>;
+  schema: AnyZodSchema<T>;
   provider?: ProviderKind;
   temperature?: number;
   cache?: "session" | false;

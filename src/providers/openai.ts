@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { AIExecutionResult, AIProvider, ProviderExecuteArgs } from "../core/types";
 import { deriveCost, estimateUSD } from "../core/cost";
 import { AIError } from "../core/types";
+import { stableStringify } from "../core/utils";
 
 export interface OpenAIProviderConfig {
   apiKey?: string;
@@ -40,16 +41,8 @@ const getClient = (config: OpenAIProviderConfig = {}) => {
 const safeJsonParse = (content: string): unknown => {
   try {
     return JSON.parse(content);
-  } catch (error) {
+  } catch {
     return undefined;
-  }
-};
-
-const stableStringify = (value: unknown): string => {
-  try {
-    return JSON.stringify(value, Object.keys(value as object).sort());
-  } catch (error) {
-    return String(value);
   }
 };
 
