@@ -1,6 +1,36 @@
 import { AnyZodSchema } from "./types";
 
 /**
+ * Recursively normalize string values that look like enum values to lowercase.
+ * Handles LLMs returning "POSITIVE" instead of "positive".
+ */
+export const normalizeEnumValues = (value: unknown): unknown => {
+  if (value === null || value === undefined) return value;
+
+  if (typeof value === "string") {
+    // If it looks like an enum value (all caps or title case, no spaces), lowercase it
+    if (/^[A-Z][A-Z_]*$/.test(value) || /^[A-Z][a-z]+$/.test(value)) {
+      return value.toLowerCase();
+    }
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(normalizeEnumValues);
+  }
+
+  if (typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      result[key] = normalizeEnumValues(val);
+    }
+    return result;
+  }
+
+  return value;
+};
+
+/**
  * Stable JSON serialization that handles edge cases:
  * - Circular references (returns "[Circular]")
  * - Functions (ignored/undefined)

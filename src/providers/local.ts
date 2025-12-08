@@ -1,6 +1,6 @@
 import { AIExecutionResult, AIProvider, ProviderExecuteArgs, AIError } from "../core/types";
 import { deriveCost, estimateUSD } from "../core/cost";
-import { stableStringify, zodToJsonExample } from "../core/utils";
+import { normalizeEnumValues, stableStringify, zodToJsonExample } from "../core/utils";
 
 export interface LocalProviderConfig {
   endpoint?: string;
@@ -44,6 +44,7 @@ class LocalProviderImpl implements AIProvider {
     const systemPrompt = [
       "You are a deterministic function for a React UI runtime.",
       "Return ONLY valid JSON matching the exact schema provided.",
+      "IMPORTANT: Use exact casing as shown in the schema (lowercase for enums like 'positive', not 'POSITIVE').",
       "Never include markdown, explanations, JSX, HTML, or code.",
       "Just output the raw JSON object, nothing else."
     ].join(" ");
@@ -84,15 +85,13 @@ class LocalProviderImpl implements AIProvider {
       ? messageContent.map((c: unknown) => (typeof c === "string" ? c : (c as { text?: string })?.text ?? "")).join("")
       : messageContent;
     const parsed = typeof rawContent === "string" ? safeJsonParse(rawContent) : rawContent;
-    const data = parsed && typeof parsed === "object" && "data" in parsed ? (parsed as { data: unknown }).data : parsed ?? rawContent;
+    const unwrapped = parsed && typeof parsed === "object" && "data" in parsed ? (parsed as { data: unknown }).data : parsed ?? rawContent;
 
-    // Debug logging
-    console.log("[intent-ui-lib] Raw content:", rawContent);
-    console.log("[intent-ui-lib] Parsed data:", data);
+    // Normalize string values to lowercase for enum matching
+    const data = normalizeEnumValues(unwrapped);
 
     const validated = schema.safeParse(data);
-    console.log("[intent-ui-lib] Validation result:", validated.success, validated.success ? "OK" : validated.error);
-    
+
     if (!validated.success) {
       throw new AIError("Local provider returned invalid schema", "validation_error", validated.error);
     }

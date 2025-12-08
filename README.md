@@ -12,6 +12,7 @@
 ## Problem
 
 Raw AI output is unsafe to render in UI. You need:
+
 - ✅ **Deterministic responses** — same input → same output
 - ✅ **Strict schema validation** — Zod-validated, typed results
 - ✅ **Cost awareness** — token counting, USD estimation, caching
@@ -52,15 +53,16 @@ When you provide a Zod schema, Intent UI automatically:
 
 1. **Converts** your schema to a human-readable JSON example
 2. **Injects** it into the LLM prompt — the AI knows exactly what format to return
-3. **Validates** the response against your schema
-4. **Returns** typed, safe data to your component
+3. **Normalizes** enum-like values (e.g., `"POSITIVE"` → `"positive"`) for LLM quirks
+4. **Validates** the response against your schema
+5. **Returns** typed, safe data to your component
 
 ```tsx
 // You write this:
 schema: z.object({
   summary: z.string(),
-  sentiment: z.enum(['positive', 'neutral', 'negative']),
-})
+  sentiment: z.enum(["positive", "neutral", "negative"]),
+});
 
 // The LLM receives:
 // "Required format: {"summary":"string","sentiment":"positive | neutral | negative"}"
@@ -70,14 +72,14 @@ You declare intent, we handle the rest.
 
 ## Core Principles
 
-| Principle | Implementation |
-|-----------|----------------|
-| **Deterministic** | Temperature defaults to `0`, inputs sanitized |
-| **Schema-safe** | Auto schema injection + Zod validation before rendering |
-| **Fail-safe** | Retries + timeouts + typed errors + observable fallbacks |
-| **Headless** | Render props only — no UI opinions |
-| **Cost-aware** | Token counting, USD estimation, session caching |
-| **Pluggable** | Mock, OpenAI, local LLM, or custom providers |
+| Principle         | Implementation                                           |
+| ----------------- | -------------------------------------------------------- |
+| **Deterministic** | Temperature defaults to `0`, inputs sanitized            |
+| **Schema-safe**   | Auto schema injection + Zod validation before rendering  |
+| **Fail-safe**     | Retries + timeouts + typed errors + observable fallbacks |
+| **Headless**      | Render props only — no UI opinions                       |
+| **Cost-aware**    | Token counting, USD estimation, session caching          |
+| **Pluggable**     | Mock, OpenAI, local LLM, or custom providers             |
 
 ## Fallback Observability
 
@@ -98,10 +100,10 @@ if (usedFallback) {
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `usedFallback` | `boolean` | `true` if AI failed and fallback was used |
-| `fallbackReason` | `string` | Why the fallback was triggered |
+| Field            | Type      | Description                               |
+| ---------------- | --------- | ----------------------------------------- |
+| `usedFallback`   | `boolean` | `true` if AI failed and fallback was used |
+| `fallbackReason` | `string`  | Why the fallback was triggered            |
 
 This enables better UX decisions, debugging, and analytics.
 
@@ -110,16 +112,25 @@ This enables better UX decisions, debugging, and analytics.
 ### `useAI<T>(options)`
 
 ```tsx
-const { data, loading, error, cost, fromCache, usedFallback, fallbackReason, refresh } = useAI({
-  prompt: "Explain this error",      // required
-  input: { error },                   // optional context
-  schema: z.string(),                 // required Zod schema
-  provider: "mock",                   // "mock" | "openai" | "local" | custom
-  temperature: 0,                     // default: 0 (deterministic)
-  cache: "session",                   // "session" | false
-  timeoutMs: 15000,                   // default: 15s
-  retry: 1,                           // retries after first attempt
-  fallback: "Default text",           // used on failure
+const {
+  data,
+  loading,
+  error,
+  cost,
+  fromCache,
+  usedFallback,
+  fallbackReason,
+  refresh,
+} = useAI({
+  prompt: "Explain this error", // required
+  input: { error }, // optional context
+  schema: z.string(), // required Zod schema
+  provider: "mock", // "mock" | "openai" | "local" | custom
+  temperature: 0, // default: 0 (deterministic)
+  cache: "session", // "session" | false
+  timeoutMs: 15000, // default: 15s
+  retry: 1, // retries after first attempt
+  fallback: "Default text", // used on failure
 });
 ```
 
@@ -137,12 +148,35 @@ Headless render-prop component wrapping `useAI`:
 
 ### Providers
 
-| Provider | Use Case |
-|----------|----------|
-| `mockProvider` | Development, deterministic, zero cost |
+| Provider         | Use Case                                                  |
+| ---------------- | --------------------------------------------------------- |
+| `mockProvider`   | Development, deterministic, zero cost                     |
 | `openAIProvider` | Production, uses `gpt-4o-mini`, requires `OPENAI_API_KEY` |
-| `localProvider` | Local LLMs (Ollama, LM Studio), $0 cost |
-| Custom | Implement `AIProvider` interface |
+| `localProvider`  | Local LLMs (Ollama, LM Studio), $0 cost                   |
+| Custom           | Implement `AIProvider` interface                          |
+
+### LLM Quirk Handling
+
+LLMs sometimes return unexpected formats. Intent UI handles common quirks automatically:
+
+| Quirk                                      | Handling                     |
+| ------------------------------------------ | ---------------------------- |
+| Enum casing (`"POSITIVE"` vs `"positive"`) | Auto-normalized to lowercase |
+| Wrapped responses (`{"data": ...}`)        | Auto-unwrapped               |
+| Extra whitespace                           | Trimmed before parsing       |
+
+For strict validation without normalization, use Zod transforms in your schema:
+
+```tsx
+// Explicit case handling (no library magic)
+sentiment: z.enum(["positive", "neutral", "negative"]);
+
+// Or case-insensitive with explicit transform
+sentiment: z.preprocess(
+  (val) => (typeof val === "string" ? val.toLowerCase() : val),
+  z.enum(["positive", "neutral", "negative"])
+);
+```
 
 ### `zodToJsonExample(schema)`
 
@@ -185,13 +219,19 @@ Rendering is always client-side via `useAI()` or `<AIText />`.
 ## Examples
 
 ### Error Explanation
+
 ```tsx
-<AIText prompt="Explain this error to a non-technical user" input={{ error }} schema={z.string()}>
-  {(text, { loading }) => loading ? "Loading…" : text}
+<AIText
+  prompt="Explain this error to a non-technical user"
+  input={{ error }}
+  schema={z.string()}
+>
+  {(text, { loading }) => (loading ? "Loading…" : text)}
 </AIText>
 ```
 
 ### Feature Gating
+
 ```tsx
 const { data: enabled } = useAI({
   prompt: "Should this user see the beta feature?",
@@ -201,14 +241,17 @@ const { data: enabled } = useAI({
 ```
 
 ### Structured Decisions
+
 ```tsx
 <AIText
   prompt="Decide if this expense should be approved"
   input={{ user, amount, vendor, history }}
   schema={z.object({ approve: z.boolean(), reason: z.string() })}
 >
-  {(decision, { loading }) => 
-    loading ? "Evaluating…" : (
+  {(decision, { loading }) =>
+    loading ? (
+      "Evaluating…"
+    ) : (
       <div>
         <p>{decision?.approve ? "✅ Approved" : "❌ Rejected"}</p>
         <p>{decision?.reason}</p>
@@ -220,15 +263,15 @@ const { data: enabled } = useAI({
 
 ## Comparison
 
-| Feature | Intent UI | Vercel AI SDK | CopilotKit |
-|---------|-----------|---------------|------------|
-| Schema validation (Zod) | ✅ Built-in | ✅ Yes | ❌ No |
-| Headless render props | ✅ Yes | ❌ No | ❌ No |
-| Session caching | ✅ Built-in | ❌ Manual | ❌ No |
-| Cost tracking | ✅ Built-in | ❌ No | ❌ No |
-| Deterministic default | ✅ temp=0 | ❌ No | ❌ No |
-| Fallback values | ✅ Built-in | ❌ Manual | ❌ No |
-| Focus | Data inference | Infra/streaming | Chat UI |
+| Feature                 | Intent UI      | Vercel AI SDK   | CopilotKit |
+| ----------------------- | -------------- | --------------- | ---------- |
+| Schema validation (Zod) | ✅ Built-in    | ✅ Yes          | ❌ No      |
+| Headless render props   | ✅ Yes         | ❌ No           | ❌ No      |
+| Session caching         | ✅ Built-in    | ❌ Manual       | ❌ No      |
+| Cost tracking           | ✅ Built-in    | ❌ No           | ❌ No      |
+| Deterministic default   | ✅ temp=0      | ❌ No           | ❌ No      |
+| Fallback values         | ✅ Built-in    | ❌ Manual       | ❌ No      |
+| Focus                   | Data inference | Infra/streaming | Chat UI    |
 
 ## Development
 
