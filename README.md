@@ -1,37 +1,32 @@
-# Intent UI Library (V1)
+# Intent UI Library
 
 [![CI](https://github.com/b-meron/intent-ui-lib/actions/workflows/ci.yml/badge.svg)](https://github.com/b-meron/intent-ui-lib/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/intent-ui-lib.svg)](https://www.npmjs.com/package/intent-ui-lib)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
 
-AI-native, intent-driven React runtime: deterministic, schema-safe, headless by default.
+**Schema-safe AI inference for React** — headless, cached, cost-aware, deterministic by default.
+
+> Think of it as **React Query for AI**: declare what you need, get typed data back.
 
 ## Problem
-Raw AI output is unsafe to render in UI. Teams need deterministic responses, strict schema validation, cost awareness, and headless rendering so they control the DOM. This library enforces those guarantees.
 
-## One-Sentence Vision
-Declarative React + intent-first execution: prompts in, typed JSON out, validated with Zod, rendered headlessly.
+Raw AI output is unsafe to render in UI. You need:
+- ✅ **Deterministic responses** — same input → same output
+- ✅ **Strict schema validation** — Zod-validated, typed results
+- ✅ **Cost awareness** — token counting, USD estimation, caching
+- ✅ **Headless rendering** — you control the DOM, not the library
 
-## Determinism & Safety
-- Temperature defaults to `0` and inputs are sanitized.
-- Providers return structured JSON only (no JSX/HTML), always Zod-validated.
-- Fail-safe paths: retries + timeouts + typed `AIError` + optional fallback values.
-- Session caching keeps repeated prompts deterministic and cost-aware.
-
-## Provider / Server Contract
-Providers never return React components. They return JSON `{ data, tokens?, estimatedUSD? }` that must pass the caller’s Zod schema. Rendering happens on the client via `useAI()` or `<AIText />`.
+This library enforces all of these guarantees.
 
 ## Installation
+
 ```bash
 npm install intent-ui-lib zod react
-# dev/build tooling
-npm install -D typescript tsup vitest
-# demo/dev server
-npm install -D vite @vitejs/plugin-react tailwindcss postcss autoprefixer
 ```
 
-## Quick Start (Headless)
+## Quick Start
+
 ```tsx
 import { z } from "zod";
 import { AIText } from "intent-ui-lib";
@@ -43,108 +38,154 @@ export function ErrorSummary({ error }: { error: Error }) {
       input={{ error }}
       schema={z.string()}
     >
-      {(text, { loading, error }) =>
-        loading ? "Loading…" : error ? "AI failed safely" : text
+      {(text, { loading, error: aiError }) =>
+        loading ? "Loading…" : aiError ? "AI failed safely" : text
       }
     </AIText>
   );
 }
 ```
 
+## Core Principles
+
+| Principle | Implementation |
+|-----------|----------------|
+| **Deterministic** | Temperature defaults to `0`, inputs sanitized |
+| **Schema-safe** | All responses Zod-validated before rendering |
+| **Fail-safe** | Retries + timeouts + typed errors + fallback values |
+| **Headless** | Render props only — no UI opinions |
+| **Cost-aware** | Token counting, USD estimation, session caching |
+| **Pluggable** | Mock, OpenAI, local LLM, or custom providers |
+
 ## API Reference
 
 ### `useAI<T>(options)`
-Options (defaults):
-- `prompt` (required): string
-- `input`: unknown
-- `schema` (required): `ZodSchema<T>`
-- `provider`: `"mock" | "openai" | "local" | AIProvider` (default `"mock"`)
-- `temperature`: number (default `0`)
-- `cache`: `"session" | false` (default `"session"`)
-- `timeoutMs`: number (default `15000`)
-- `retry`: number of retries after first attempt (default `1`)
-- `fallback`: `T | () => T`
 
-Returns `{ data, loading, error, cost, tokens, estimatedUSD, fromCache, refresh }`.
+```tsx
+const { data, loading, error, cost, fromCache, refresh } = useAI({
+  prompt: "Explain this error",      // required
+  input: { error },                   // optional context
+  schema: z.string(),                 // required Zod schema
+  provider: "mock",                   // "mock" | "openai" | "local" | custom
+  temperature: 0,                     // default: 0 (deterministic)
+  cache: "session",                   // "session" | false
+  timeoutMs: 15000,                   // default: 15s
+  retry: 1,                           // retries after first attempt
+  fallback: "Default text",           // used on failure
+});
+```
 
 ### `<AIText />`
-Headless render-prop component that wraps `useAI`.
-- Props mirror `useAI` plus `children: (data, meta) => ReactNode`.
-- `meta` contains loading/error/cost/tokens/fromCache/refresh.
+
+Headless render-prop component wrapping `useAI`:
+
+```tsx
+<AIText prompt="..." input={...} schema={z.string()}>
+  {(data, { loading, error, cost, fromCache, refresh }) => (
+    // You control rendering
+  )}
+</AIText>
+```
 
 ### Providers
-- `mockProvider`: deterministic, zero cost, browser-only.
-- `openAIProvider` / `createOpenAIProvider`: uses `OPENAI_API_KEY` (or `VITE_OPENAI_API_KEY` in Vite) and `gpt-4o-mini` by default; enforces JSON-only output.
-- `localProvider` / `createLocalProvider`: openai-compatible local endpoint (e.g., Ollama/LM Studio at `http://localhost:11434/v1/chat/completions`).
-- Custom: implement `AIProvider.execute({ prompt, input, schema, temperature, signal })` → `{ data, tokens, estimatedUSD }`.
+
+| Provider | Use Case |
+|----------|----------|
+| `mockProvider` | Development, deterministic, zero cost |
+| `openAIProvider` | Production, uses `gpt-4o-mini`, requires `OPENAI_API_KEY` |
+| `localProvider` | Local LLMs (Ollama, LM Studio), $0 cost |
+| Custom | Implement `AIProvider` interface |
+
+## Provider Contract
+
+Providers return JSON, never React components:
+
+```json
+{
+  "data": "Your validated result",
+  "tokens": 42,
+  "estimatedUSD": 0.002
+}
+```
+
+Rendering is always client-side via `useAI()` or `<AIText />`.
 
 ## Cost Model
-- Default estimation: `tokens = ceil(len(prompt)/4 + len(input)/4) + 8`.
-- USD estimation: `tokens / 1000 * 0.002` (rounded to 6 decimals).
-- If the provider supplies usage, it is surfaced; otherwise estimated cost is used.
 
-## Deployment Models
-- Browser → Provider (default for dev/internal tools).
-- Browser → Server → Provider (production, audit logs, secrets isolation).
-- Browser → Local LLM (Ollama/LM Studio, $0 cost) via `localProvider`.
+- **Token estimation**: `ceil(prompt.length/4) + ceil(input.length/4) + 8`
+- **USD estimation**: `tokens / 1000 * 0.002`
+- **Session caching**: Enabled by default, avoids repeated API calls
+- **Real usage**: If provider returns actual token count, it's used instead
 
 ## Examples
-- Error Explanation:
+
+### Error Explanation
 ```tsx
 <AIText prompt="Explain this error to a non-technical user" input={{ error }} schema={z.string()}>
   {(text, { loading }) => loading ? "Loading…" : text}
 </AIText>
 ```
 
-- Feature Gating:
+### Feature Gating
 ```tsx
-const enabled = useAI({
-  prompt: "Enable this feature only for power users unlikely to churn",
+const { data: enabled } = useAI({
+  prompt: "Should this user see the beta feature?",
   input: { usage, plan, behavior },
   schema: z.boolean(),
 });
 ```
 
-- Internal Approval:
+### Structured Decisions
 ```tsx
 <AIText
-  prompt="Decide if this expense should be approved safely"
+  prompt="Decide if this expense should be approved"
   input={{ user, amount, vendor, history }}
   schema={z.object({ approve: z.boolean(), reason: z.string() })}
 >
-  {(decision, meta) => meta.loading ? "Scoring…" : JSON.stringify(decision)}
+  {(decision, { loading }) => 
+    loading ? "Evaluating…" : (
+      <div>
+        <p>{decision?.approve ? "✅ Approved" : "❌ Rejected"}</p>
+        <p>{decision?.reason}</p>
+      </div>
+    )
+  }
 </AIText>
 ```
 
-## Dev Experience (Vite + Tailwind demo)
-- `npm install`
-- `npm run dev`
-- Open `http://localhost:5173`
-- Demo lives in `example/DemoPage.tsx` and shows:
-  - AI output, loading, and error states
-  - Cost + token reporting
-  - Cache hits
-  - Provider switching (mock / OpenAI / local)
+## Comparison
 
-## Competition
-- Vercel AI SDK: infra only, not a headless UI runtime.
-- LangChain: workflow engine, not UI-native.
-- CopilotKit: chat assistants, not headless intent components.
-- Retool AI: closed SaaS.
-- Builder.io AI: UI generation, not runtime execution.
-
-## Roadmap (Phase 2)
-- `<AIForm />`
-- `<AIDecision />` component
-- Streaming
-- Devtools & audit logs
-- Edge execution & additional local adapters
+| Feature | Intent UI | Vercel AI SDK | CopilotKit |
+|---------|-----------|---------------|------------|
+| Schema validation (Zod) | ✅ Built-in | ✅ Yes | ❌ No |
+| Headless render props | ✅ Yes | ❌ No | ❌ No |
+| Session caching | ✅ Built-in | ❌ Manual | ❌ No |
+| Cost tracking | ✅ Built-in | ❌ No | ❌ No |
+| Deterministic default | ✅ temp=0 | ❌ No | ❌ No |
+| Fallback values | ✅ Built-in | ❌ Manual | ❌ No |
+| Focus | Data inference | Infra/streaming | Chat UI |
 
 ## Development
-- Build library: `npm run build`
-- Dev server: `npm run dev`
-- Typecheck: `npm run typecheck`
-- Test: `npm run test`
+
+```bash
+npm install
+npm run dev       # Vite dev server at http://localhost:5173
+npm run build     # Build library
+npm run typecheck # Type check
+npm run test      # Run tests
+```
+
+Demo page in `example/DemoPage.tsx` shows all features.
+
+## Roadmap
+
+- [ ] Streaming support
+- [ ] `<AIForm />` — AI-assisted form validation
+- [ ] `<AIDecision />` — boolean decisions with reasoning
+- [ ] Multi-step inference chains
+- [ ] Tool/function calling
+- [ ] Devtools & debug panel
 
 ## License
+
 MIT
