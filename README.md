@@ -46,23 +46,71 @@ export function ErrorSummary({ error }: { error: Error }) {
 }
 ```
 
+## How It Works
+
+When you provide a Zod schema, Intent UI automatically:
+
+1. **Converts** your schema to a human-readable JSON example
+2. **Injects** it into the LLM prompt — the AI knows exactly what format to return
+3. **Validates** the response against your schema
+4. **Returns** typed, safe data to your component
+
+```tsx
+// You write this:
+schema: z.object({
+  summary: z.string(),
+  sentiment: z.enum(['positive', 'neutral', 'negative']),
+})
+
+// The LLM receives:
+// "Required format: {"summary":"string","sentiment":"positive | neutral | negative"}"
+```
+
+You declare intent, we handle the rest.
+
 ## Core Principles
 
 | Principle | Implementation |
 |-----------|----------------|
 | **Deterministic** | Temperature defaults to `0`, inputs sanitized |
-| **Schema-safe** | All responses Zod-validated before rendering |
-| **Fail-safe** | Retries + timeouts + typed errors + fallback values |
+| **Schema-safe** | Auto schema injection + Zod validation before rendering |
+| **Fail-safe** | Retries + timeouts + typed errors + observable fallbacks |
 | **Headless** | Render props only — no UI opinions |
 | **Cost-aware** | Token counting, USD estimation, session caching |
 | **Pluggable** | Mock, OpenAI, local LLM, or custom providers |
+
+## Fallback Observability
+
+When AI fails (timeout, validation error, provider error), the library gracefully falls back to your default value. You can **observe** when this happens:
+
+```tsx
+const { data, usedFallback, fallbackReason } = useAI({
+  prompt: "Summarize this article",
+  input: { article },
+  schema: z.string(),
+  fallback: "Summary unavailable",
+});
+
+// Know when fallback was used
+if (usedFallback) {
+  console.log(`AI failed: ${fallbackReason}`);
+  // e.g., "AI call timed out" or "Provider returned invalid shape"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `usedFallback` | `boolean` | `true` if AI failed and fallback was used |
+| `fallbackReason` | `string` | Why the fallback was triggered |
+
+This enables better UX decisions, debugging, and analytics.
 
 ## API Reference
 
 ### `useAI<T>(options)`
 
 ```tsx
-const { data, loading, error, cost, fromCache, refresh } = useAI({
+const { data, loading, error, cost, fromCache, usedFallback, fallbackReason, refresh } = useAI({
   prompt: "Explain this error",      // required
   input: { error },                   // optional context
   schema: z.string(),                 // required Zod schema
@@ -81,7 +129,7 @@ Headless render-prop component wrapping `useAI`:
 
 ```tsx
 <AIText prompt="..." input={...} schema={z.string()}>
-  {(data, { loading, error, cost, fromCache, refresh }) => (
+  {(data, { loading, error, cost, fromCache, usedFallback, fallbackReason, refresh }) => (
     // You control rendering
   )}
 </AIText>
@@ -95,6 +143,23 @@ Headless render-prop component wrapping `useAI`:
 | `openAIProvider` | Production, uses `gpt-4o-mini`, requires `OPENAI_API_KEY` |
 | `localProvider` | Local LLMs (Ollama, LM Studio), $0 cost |
 | Custom | Implement `AIProvider` interface |
+
+### `zodToJsonExample(schema)`
+
+Converts a Zod schema to the JSON example string injected into LLM prompts. Useful for debugging or custom providers:
+
+```tsx
+import { zodToJsonExample } from "intent-ui-lib";
+import { z } from "zod";
+
+const schema = z.object({
+  approved: z.boolean(),
+  reason: z.string(),
+});
+
+console.log(zodToJsonExample(schema));
+// {"approved":true,"reason":"string"}
+```
 
 ## Provider Contract
 

@@ -21,6 +21,8 @@ interface AITextProps<T> {
       tokens?: number;
       estimatedUSD?: number;
       fromCache?: boolean;
+      usedFallback?: boolean;
+      fallbackReason?: string;
       refresh: () => Promise<void>;
     }
   ) => React.ReactNode;
@@ -46,6 +48,8 @@ export function AIText<T>(props: AITextProps<T>) {
     tokens: result.tokens,
     estimatedUSD: result.estimatedUSD,
     fromCache: result.fromCache,
+    usedFallback: result.usedFallback,
+    fallbackReason: result.fallbackReason,
     refresh: result.refresh
   })}</>;
 }

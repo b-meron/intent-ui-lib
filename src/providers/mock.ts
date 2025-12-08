@@ -1,76 +1,98 @@
-import { ZodArray, ZodBoolean, ZodDefault, ZodEnum, ZodLiteral, ZodNullable, ZodNumber, ZodObject, ZodOptional, ZodString, ZodType, ZodUnion } from "zod";
 import { AIExecutionResult, AIProvider, AnyZodSchema, ProviderExecuteArgs } from "../core/types";
 import { deriveCost } from "../core/cost";
 import { stableStringify } from "../core/utils";
 
+interface ZodDef {
+  typeName: string;
+  shape?: () => Record<string, { _def: ZodDef }>;
+  type?: { _def: ZodDef };
+  options?: Array<{ _def: ZodDef }>;
+  values?: string[];
+  value?: unknown;
+  innerType?: { _def: ZodDef };
+  defaultValue?: () => unknown;
+}
+
 /**
- * Generate mock data that conforms to any Zod schema structure.
- * Recursively handles nested objects, arrays, enums, optionals, etc.
+ * Builds realistic mock data based on schema structure and prompt context
  */
-const generateMockValue = (schema: ZodType, prompt: string, input?: unknown, path: string = ""): unknown => {
-  const contextSuffix = input ? ` (context: ${stableStringify(input).slice(0, 50)})` : "";
-
-  if (schema instanceof ZodString) {
-    return `Mock ${path || "value"} for: ${prompt.slice(0, 30)}${contextSuffix}`;
-  }
-
-  if (schema instanceof ZodNumber) {
-    return 42;
-  }
-
-  if (schema instanceof ZodBoolean) {
-    return true;
-  }
-
-  if (schema instanceof ZodEnum) {
-    return schema._def.values[0] ?? "unknown";
-  }
-
-  if (schema instanceof ZodLiteral) {
-    return schema._def.value;
-  }
-
-  if (schema instanceof ZodArray) {
-    return [
-      generateMockValue(schema._def.type, prompt, input, `${path}[0]`),
-      generateMockValue(schema._def.type, prompt, input, `${path}[1]`),
-    ];
-  }
-
-  if (schema instanceof ZodOptional) {
-    return generateMockValue(schema._def.innerType, prompt, input, path);
-  }
-
-  if (schema instanceof ZodNullable) {
-    return generateMockValue(schema._def.innerType, prompt, input, path);
-  }
-
-  if (schema instanceof ZodDefault) {
-    return schema._def.defaultValue();
-  }
-
-  if (schema instanceof ZodObject) {
-    const shape = schema._def.shape();
-    const result: Record<string, unknown> = {};
-    for (const [key, fieldSchema] of Object.entries(shape)) {
-      result[key] = generateMockValue(fieldSchema as ZodType, prompt, input, path ? `${path}.${key}` : key);
-    }
-    return result;
-  }
-
-  if (schema instanceof ZodUnion) {
-    const firstOption = schema._def.options[0];
-    if (firstOption) {
-      return generateMockValue(firstOption, prompt, input, path);
-    }
-  }
-
-  // Fallback for unhandled types
-  return `Mock ${path || "value"}`;
+const buildMockData = (schema: AnyZodSchema, prompt: string, input?: unknown): unknown => {
+  const def = (schema as unknown as { _def: ZodDef })._def;
+  const context = input ? stableStringify(input) : "";
+  const promptPreview = prompt.slice(0, 50);
+  
+  return buildMockValue(def, promptPreview, context);
 };
 
-const buildMockData = (schema: AnyZodSchema, prompt: string, input?: unknown): unknown => {
-  return generateMockValue(schema, prompt, input);
+const buildMockValue = (def: ZodDef, prompt: string, context: string): unknown => {
+  const typeName = def.typeName;
+
+  switch (typeName) {
+    case "ZodString":
+      return `Mock: ${prompt} (context: ${context.slice(0, 30)})`;
+    
+    case "ZodNumber":
+      return 42;
+    
+    case "ZodBoolean":
+      return true;
+    
+    case "ZodNull":
+      return null;
+    
+    case "ZodLiteral":
+      return def.value;
+    
+    case "ZodEnum":
+      // Return first enum value
+      return def.values?.[0] ?? "enum_value";
+    
+    case "ZodArray":
+      if (def.type) {
+        // Generate 2-3 mock items
+        return [
+          buildMockValue(def.type._def, `${prompt}[0]`, context),
+          buildMockValue(def.type._def, `${prompt}[1]`, context),
+        ];
+      }
+      return [];
+    
+    case "ZodObject":
+      if (def.shape) {
+        const shape = def.shape();
+        const result: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(shape)) {
+          result[key] = buildMockValue(value._def, `${prompt}.${key}`, context);
+        }
+        return result;
+      }
+      return {};
+    
+    case "ZodOptional":
+    case "ZodNullable":
+      if (def.innerType) {
+        return buildMockValue(def.innerType._def, prompt, context);
+      }
+      return null;
+    
+    case "ZodDefault":
+      if (def.defaultValue) {
+        return def.defaultValue();
+      }
+      if (def.innerType) {
+        return buildMockValue(def.innerType._def, prompt, context);
+      }
+      return null;
+    
+    case "ZodUnion":
+      if (def.options && def.options.length > 0) {
+        return buildMockValue(def.options[0]._def, prompt, context);
+      }
+      return "union_value";
+    
+    default:
+      return `<mock:${typeName}>`;
+  }
 };
 
 class MockProviderImpl implements AIProvider {

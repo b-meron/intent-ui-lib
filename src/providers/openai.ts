@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { AIExecutionResult, AIProvider, ProviderExecuteArgs } from "../core/types";
 import { deriveCost, estimateUSD } from "../core/cost";
 import { AIError } from "../core/types";
-import { stableStringify } from "../core/utils";
+import { stableStringify, zodToJsonExample } from "../core/utils";
 
 export interface OpenAIProviderConfig {
   apiKey?: string;
@@ -56,18 +56,23 @@ class OpenAIProviderImpl implements AIProvider {
 
   async execute<T>({ prompt, input, schema, temperature, signal }: ProviderExecuteArgs): Promise<AIExecutionResult<T>> {
     const client = getClient(this.config);
+    
+    // Generate JSON example from Zod schema
+    const schemaExample = zodToJsonExample(schema);
+    
     const systemPrompt = [
       "You are a deterministic function for a React UI runtime.",
       "Always respond with strict JSON object: { \"data\": <value> }.",
+      "The <value> must match the exact schema format provided.",
       "Never include code, JSX, HTML, or explanations.",
-      "Follow the user's prompt and schema strictly.",
       "If uncertain, return a safe, minimal value within schema."
     ].join(" ");
 
     const userContent = [
-      `Prompt: ${prompt}`,
-      input ? `Input: ${stableStringify(input)}` : undefined,
-      "Return only JSON for { data }"
+      `Task: ${prompt}`,
+      input ? `Context: ${stableStringify(input)}` : undefined,
+      `Required format for <value>: ${schemaExample}`,
+      "Return JSON: { \"data\": <your_response> }"
     ].filter(Boolean).join("\n");
 
     const completion = await client.chat.completions.create({

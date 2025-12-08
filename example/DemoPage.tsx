@@ -25,11 +25,12 @@ const Section = ({ title, subtitle, children }: { title: string; subtitle?: stri
   </section>
 );
 
-const CostBadge = ({ tokens, usd, fromCache }: { tokens?: number; usd?: number; fromCache?: boolean }) => (
+const CostBadge = ({ tokens, usd, fromCache, usedFallback }: { tokens?: number; usd?: number; fromCache?: boolean; usedFallback?: boolean }) => (
   <div className="flex items-center gap-2 text-xs text-slate-300">
     <span className="rounded-full bg-slate-800 px-3 py-1">tokens: {tokens ?? "est."}</span>
     <span className="rounded-full bg-slate-800 px-3 py-1">usd: {formatUSD(usd)}</span>
     {fromCache ? <span className="rounded-full bg-emerald-900/50 px-3 py-1 text-emerald-300">cache hit</span> : null}
+    {usedFallback ? <span className="rounded-full bg-amber-900/50 px-3 py-1 text-amber-300">fallback</span> : null}
   </div>
 );
 
@@ -63,7 +64,9 @@ export default function DemoPage() {
   const {
     data: featureEnabled,
     loading: featureLoading,
-    error: featureError
+    error: featureError,
+    usedFallback: featureUsedFallback,
+    fallbackReason: featureFallbackReason
   } = useAI<boolean>({
     prompt: "Enable this feature only for power users unlikely to churn",
     input: { usage: { weeklySessions: 12, nps: 52 }, plan: "pro", behavior: "low_churn_risk" },
@@ -157,10 +160,16 @@ export default function DemoPage() {
                 {featureLoading ? "Scoring user…" : featureEnabled ? "Enabled for this user" : "Disabled for this user"}
               </p>
               {featureError ? <p className="muted">Failed safely to fallback: {featureError.message}</p> : null}
+              {featureUsedFallback ? (
+                <p className="text-sm text-amber-400">⚠️ Using fallback: {featureFallbackReason}</p>
+              ) : null}
             </div>
             <div className="flex gap-2 text-xs text-slate-300">
               <span className="rounded-full bg-slate-800 px-3 py-1">prompt-validated</span>
               <span className="rounded-full bg-slate-800 px-3 py-1">fallback=false</span>
+              {featureUsedFallback ? (
+                <span className="rounded-full bg-amber-900/50 px-3 py-1 text-amber-300">fallback active</span>
+              ) : null}
             </div>
           </div>
         </Section>
@@ -189,13 +198,16 @@ export default function DemoPage() {
                           : "Declined"
                         : "No decision"}
                   </p>
-                  <CostBadge tokens={meta.tokens} usd={meta.estimatedUSD} fromCache={meta.fromCache} />
+                  <CostBadge tokens={meta.tokens} usd={meta.estimatedUSD} fromCache={meta.fromCache} usedFallback={meta.usedFallback} />
                 </div>
                 {meta.error ? (
                   <p className="muted">Error: {meta.error.message}</p>
                 ) : (
                   <p className="text-slate-100">{decision?.reason}</p>
                 )}
+                {meta.usedFallback ? (
+                  <p className="text-sm text-amber-400">⚠️ AI unavailable: {meta.fallbackReason}</p>
+                ) : null}
                 <div className="flex gap-2">
                   <button
                     className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-50 hover:border-slate-700"
@@ -210,13 +222,13 @@ export default function DemoPage() {
           </AIText>
         </Section>
 
-        <Section title="Debug" subtitle="Session cache + provider metadata surfaced for devs.">
+        <Section title="Debug" subtitle="Session cache + provider metadata + fallback observability.">
           <pre className="overflow-x-auto rounded-lg bg-slate-950/60 p-4 text-xs text-slate-200">
             {JSON.stringify(
               {
                 provider: providerName,
                 summary: { explanation, summaryLoading, summaryError, summaryCost, summaryFromCache },
-                featureGating: { featureEnabled, featureLoading, featureError },
+                featureGating: { featureEnabled, featureLoading, featureError, featureUsedFallback, featureFallbackReason },
                 expenseRequest
               },
               null,

@@ -12,6 +12,8 @@ export interface AIExecutionResult<T> {
   tokens: number;
   estimatedUSD: number;
   fromCache?: boolean;
+  usedFallback?: boolean;
+  fallbackReason?: string;
 }
 
 export interface ProviderExecuteArgs {
@@ -52,6 +54,8 @@ export interface UseAIResult<T> {
   tokens?: number;
   estimatedUSD?: number;
   fromCache?: boolean;
+  usedFallback?: boolean;
+  fallbackReason?: string;
   refresh: () => Promise<void>;
 }
 

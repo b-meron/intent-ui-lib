@@ -11,7 +11,7 @@ describe("executeAI", () => {
             provider: "mock",
         });
 
-        expect(result.data).toContain("Mock value for: Test prompt");
+        expect(result.data).toContain("Mock: Test prompt");
         expect(result.tokens).toBeGreaterThan(0);
         expect(result.estimatedUSD).toBeGreaterThan(0);
         expect(result.fromCache).toBe(false);

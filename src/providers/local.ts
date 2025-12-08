@@ -1,6 +1,6 @@
 import { AIExecutionResult, AIProvider, ProviderExecuteArgs, AIError } from "../core/types";
 import { deriveCost, estimateUSD } from "../core/cost";
-import { stableStringify } from "../core/utils";
+import { stableStringify, zodToJsonExample } from "../core/utils";
 
 export interface LocalProviderConfig {
   endpoint?: string;
@@ -10,7 +10,7 @@ export interface LocalProviderConfig {
 }
 
 const DEFAULT_ENDPOINT = "http://localhost:11434/v1/chat/completions";
-const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "llama3";
 
 const safeJsonParse = (value: string): unknown => {
   try {
@@ -38,11 +38,22 @@ class LocalProviderImpl implements AIProvider {
     const endpoint = this.config.endpoint ?? DEFAULT_ENDPOINT;
     const model = this.config.model ?? DEFAULT_MODEL;
 
+    // Generate JSON example from Zod schema
+    const schemaExample = zodToJsonExample(schema);
+
     const systemPrompt = [
       "You are a deterministic function for a React UI runtime.",
-      "Only return JSON in shape { \"data\": <value> }.",
-      "Never include JSX, HTML, or code."
+      "Return ONLY valid JSON matching the exact schema provided.",
+      "Never include markdown, explanations, JSX, HTML, or code.",
+      "Just output the raw JSON object, nothing else."
     ].join(" ");
+
+    const userContent = [
+      `Task: ${prompt}`,
+      input ? `Context: ${stableStringify(input)}` : null,
+      `Required JSON format: ${schemaExample}`,
+      "Return ONLY the JSON object matching this format."
+    ].filter(Boolean).join("\n");
 
     const response = await fetcher(endpoint, {
       method: "POST",
@@ -55,7 +66,7 @@ class LocalProviderImpl implements AIProvider {
         model,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Prompt: ${prompt}\nInput: ${stableStringify(input)}` }
+          { role: "user", content: userContent }
         ],
         temperature: temperature ?? 0,
         stream: false
@@ -75,7 +86,13 @@ class LocalProviderImpl implements AIProvider {
     const parsed = typeof rawContent === "string" ? safeJsonParse(rawContent) : rawContent;
     const data = parsed && typeof parsed === "object" && "data" in parsed ? (parsed as { data: unknown }).data : parsed ?? rawContent;
 
+    // Debug logging
+    console.log("[intent-ui-lib] Raw content:", rawContent);
+    console.log("[intent-ui-lib] Parsed data:", data);
+
     const validated = schema.safeParse(data);
+    console.log("[intent-ui-lib] Validation result:", validated.success, validated.success ? "OK" : validated.error);
+    
     if (!validated.success) {
       throw new AIError("Local provider returned invalid schema", "validation_error", validated.error);
     }
