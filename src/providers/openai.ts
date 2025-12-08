@@ -2,7 +2,7 @@ import OpenAI from "openai";
 import { AIExecutionResult, AIProvider, ProviderExecuteArgs } from "../core/types";
 import { deriveCost, estimateUSD } from "../core/cost";
 import { AIError } from "../core/types";
-import { normalizeEnumValues, stableStringify, zodToJsonExample } from "../core/utils";
+import { stableStringify, zodToJsonExample } from "../core/utils";
 
 export interface OpenAIProviderConfig {
   apiKey?: string;
@@ -91,14 +91,11 @@ class OpenAIProviderImpl implements AIProvider {
       : (messageContent ?? "");
 
     const parsed = typeof content === "string" ? safeJsonParse(content) : undefined;
-    const unwrapped = parsed && typeof parsed === "object" && "data" in parsed ? (parsed as { data: unknown }).data : undefined;
+    const data = parsed && typeof parsed === "object" && "data" in parsed ? (parsed as { data: unknown }).data : undefined;
 
-    if (unwrapped === undefined) {
+    if (data === undefined) {
       throw new AIError("OpenAI returned no data", "provider_error");
     }
-
-    // Normalize string values to lowercase for enum matching
-    const data = normalizeEnumValues(unwrapped);
 
     const validated = schema.safeParse(data);
     if (!validated.success) {

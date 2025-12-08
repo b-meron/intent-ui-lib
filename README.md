@@ -53,9 +53,8 @@ When you provide a Zod schema, Intent UI automatically:
 
 1. **Converts** your schema to a human-readable JSON example
 2. **Injects** it into the LLM prompt — the AI knows exactly what format to return
-3. **Normalizes** enum-like values (e.g., `"POSITIVE"` → `"positive"`) for LLM quirks
-4. **Validates** the response against your schema
-5. **Returns** typed, safe data to your component
+3. **Validates** the response against your schema
+4. **Returns** typed, safe data to your component
 
 ```tsx
 // You write this:
@@ -159,24 +158,32 @@ Headless render-prop component wrapping `useAI`:
 
 LLMs sometimes return unexpected formats. Intent UI handles common quirks automatically:
 
-| Quirk                                      | Handling                     |
-| ------------------------------------------ | ---------------------------- |
-| Enum casing (`"POSITIVE"` vs `"positive"`) | Auto-normalized to lowercase |
-| Wrapped responses (`{"data": ...}`)        | Auto-unwrapped               |
-| Extra whitespace                           | Trimmed before parsing       |
+| Quirk                                        | Handling                      |
+| -------------------------------------------- | ----------------------------- |
+| Wrapped responses (`{"data": ...}`)          | Auto-unwrapped                |
+| Extra text after JSON (`{...}\n\nNote: ...`) | Extracted JSON, ignored text  |
+| Extra whitespace                             | Trimmed before parsing        |
+| Enum casing (`"POSITIVE"` vs `"positive"`)   | **Opt-in** via helper (below) |
 
-For strict validation without normalization, use Zod transforms in your schema:
+### `caseInsensitiveEnum(values)`
+
+LLMs often return enum values in different cases. Use this helper for case-insensitive enum validation:
 
 ```tsx
-// Explicit case handling (no library magic)
-sentiment: z.enum(["positive", "neutral", "negative"]);
+import { caseInsensitiveEnum } from "intent-ui-lib";
+import { z } from "zod";
 
-// Or case-insensitive with explicit transform
-sentiment: z.preprocess(
-  (val) => (typeof val === "string" ? val.toLowerCase() : val),
-  z.enum(["positive", "neutral", "negative"])
-);
+const schema = z.object({
+  sentiment: caseInsensitiveEnum(["positive", "neutral", "negative"]),
+});
+
+// All of these will validate successfully:
+// { sentiment: "positive" }
+// { sentiment: "POSITIVE" }
+// { sentiment: "Positive" }
 ```
+
+This is explicit opt-in — you control which enums are case-insensitive.
 
 ### `zodToJsonExample(schema)`
 

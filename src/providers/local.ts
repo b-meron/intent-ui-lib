@@ -1,6 +1,6 @@
 import { AIExecutionResult, AIProvider, ProviderExecuteArgs, AIError } from "../core/types";
 import { deriveCost, estimateUSD } from "../core/cost";
-import { normalizeEnumValues, stableStringify, zodToJsonExample } from "../core/utils";
+import { stableStringify, zodToJsonExample } from "../core/utils";
 
 export interface LocalProviderConfig {
   endpoint?: string;
@@ -15,7 +15,16 @@ const DEFAULT_MODEL = "llama3";
 const safeJsonParse = (value: string): unknown => {
   try {
     return JSON.parse(value);
-  } catch (error) {
+  } catch {
+    // Try to extract JSON from text that might have extra content after it
+    const jsonMatch = value.match(/^\s*(\{[\s\S]*\})\s*(?:\n|$)/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[1]);
+      } catch {
+        return undefined;
+      }
+    }
     return undefined;
   }
 };
@@ -42,11 +51,11 @@ class LocalProviderImpl implements AIProvider {
     const schemaExample = zodToJsonExample(schema);
 
     const systemPrompt = [
-      "You are a deterministic function for a React UI runtime.",
-      "Return ONLY valid JSON matching the exact schema provided.",
-      "IMPORTANT: Use exact casing as shown in the schema (lowercase for enums like 'positive', not 'POSITIVE').",
-      "Never include markdown, explanations, JSX, HTML, or code.",
-      "Just output the raw JSON object, nothing else."
+      "You are a deterministic JSON-only function.",
+      "Output ONLY the JSON object. No text before or after.",
+      "Use lowercase for enum values (e.g., 'positive' not 'POSITIVE').",
+      "DO NOT add notes, explanations, or any text outside the JSON.",
+      "If you add anything other than JSON, the system will fail."
     ].join(" ");
 
     const userContent = [
@@ -85,13 +94,9 @@ class LocalProviderImpl implements AIProvider {
       ? messageContent.map((c: unknown) => (typeof c === "string" ? c : (c as { text?: string })?.text ?? "")).join("")
       : messageContent;
     const parsed = typeof rawContent === "string" ? safeJsonParse(rawContent) : rawContent;
-    const unwrapped = parsed && typeof parsed === "object" && "data" in parsed ? (parsed as { data: unknown }).data : parsed ?? rawContent;
-
-    // Normalize string values to lowercase for enum matching
-    const data = normalizeEnumValues(unwrapped);
+    const data = parsed && typeof parsed === "object" && "data" in parsed ? (parsed as { data: unknown }).data : parsed ?? rawContent;
 
     const validated = schema.safeParse(data);
-
     if (!validated.success) {
       throw new AIError("Local provider returned invalid schema", "validation_error", validated.error);
     }
@@ -109,4 +114,3 @@ class LocalProviderImpl implements AIProvider {
 
 export const createLocalProvider = (config: LocalProviderConfig = {}) => new LocalProviderImpl(config);
 export const localProvider = new LocalProviderImpl();
-

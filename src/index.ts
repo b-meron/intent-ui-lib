@@ -4,5 +4,5 @@ export { mockProvider } from "./providers/mock";
 export { openAIProvider, createOpenAIProvider } from "./providers/openai";
 export { localProvider, createLocalProvider } from "./providers/local";
 export { clearSessionCache } from "./core/cache";
-export { zodToJsonExample } from "./core/utils";
+export { caseInsensitiveEnum, zodToJsonExample } from "./core/utils";
 export * from "./core/types";
