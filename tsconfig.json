@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "types": ["vitest/globals", "vite/client"]
+  },
+  "include": [
+    "src",
+    "tests",
+    "example",
+    "tsup.config.ts",
+    "vite.config.ts",
+    "tailwind.config.ts",
+    "postcss.config.cjs"
+  ],
+  "exclude": ["dist", "node_modules"]
+}
