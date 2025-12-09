@@ -51,7 +51,7 @@ export function ErrorSummary({ error }: { error: Error }) {
 
 ## How It Works
 
-When you provide a Zod schema, Intent UI automatically:
+When you provide a Zod schema, react-ai-query automatically:
 
 1. **Converts** your schema to a human-readable JSON example
 2. **Injects** it into the LLM prompt — the AI knows exactly what format to return
@@ -211,7 +211,7 @@ const { data } = useAI({
 
 ### LLM Quirk Handling
 
-LLMs sometimes return unexpected formats. Intent UI handles common quirks automatically:
+LLMs sometimes return unexpected formats. react-ai-query handles common quirks automatically:
 
 | Quirk                                        | Handling                             |
 | -------------------------------------------- | ------------------------------------ |
@@ -327,7 +327,7 @@ const { data: enabled } = useAI({
 
 ## Comparison
 
-| Feature                 | Intent UI      | Vercel AI SDK   | CopilotKit |
+| Feature                 | react-ai-query | Vercel AI SDK   | CopilotKit |
 | ----------------------- | -------------- | --------------- | ---------- |
 | Schema validation (Zod) | ✅ Built-in    | ✅ Yes          | ❌ No      |
 | Headless render props   | ✅ Yes         | ❌ No           | ❌ No      |

@@ -1,5 +1,5 @@
-export const GROQ_KEY_STORAGE = "intent-ui-groq-key";
-export const OPENAI_KEY_STORAGE = "intent-ui-openai-key";
+export const GROQ_KEY_STORAGE = "react-ai-query-groq-key";
+export const OPENAI_KEY_STORAGE = "react-ai-query-openai-key";
 
 export type ProviderChoice = "mock" | "openai" | "local" | "groq";
 

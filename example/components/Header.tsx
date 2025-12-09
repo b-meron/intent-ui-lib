@@ -21,7 +21,7 @@ export const Header = ({
   <header className="border-b border-slate-900 bg-slate-900/60 sticky top-0 z-10 backdrop-blur-sm">
     <div className="mx-auto flex max-w-5xl flex-col gap-2 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p className="text-sm uppercase tracking-[0.2em] text-emerald-300">Intent-driven UI Runtime</p>
+        <p className="text-sm uppercase tracking-[0.2em] text-emerald-300">react-ai-query</p>
         <h1 className="text-xl font-bold text-slate-50">AI-Native, Deterministic, Schema-Safe</h1>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
