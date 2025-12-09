@@ -60,6 +60,11 @@
     "vitest": "^1.6.0",
     "zod": "^3.24.0"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=18"
   }
