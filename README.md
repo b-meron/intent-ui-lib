@@ -209,6 +209,142 @@ const { data } = useAI({
 });
 ```
 
+### ⚠️ Security: API Keys in Production
+
+> **Important:** Never expose API keys directly in browser code for production applications.
+
+The examples in this documentation use client-side keys for simplicity, but in production you should **proxy requests through your backend** to keep keys secure.
+
+#### Option 1: Next.js API Route (App Router)
+
+Create a route handler at `app/api/ai/route.ts`:
+
+```ts
+import { NextRequest, NextResponse } from "next/server";
+
+export async function POST(req: NextRequest) {
+  try {
+    const { messages, model } = await req.json();
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, // Secure server-side key
+      },
+      body: JSON.stringify({
+        model: model || "gpt-4o-mini",
+        messages,
+        temperature: 0,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to fetch AI response" },
+      { status: 500 }
+    );
+  }
+}
+```
+
+#### Option 2: Express Proxy
+
+```ts
+import express from "express";
+import fetch from "node-fetch"; // Required for Node < 18
+
+const app = express();
+app.use(express.json());
+
+app.post("/api/ai", async (req, res) => {
+  try {
+    const { messages, model } = req.body;
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: model || "gpt-4o-mini",
+        messages,
+        temperature: 0,
+      }),
+    });
+
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: "Proxy error" });
+  }
+});
+
+app.listen(3001);
+```
+
+#### Custom Provider for Proxy
+
+Define a provider in your frontend that calls your secure endpoint:
+
+```tsx
+import type { AIProvider } from "react-ai-query";
+
+export const proxyProvider: AIProvider = {
+  name: "proxy",
+  call: async ({ prompt, input }) => {
+    const response = await fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: "user",
+            content: `${prompt}\n\nInput: ${JSON.stringify(input)}`,
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) throw new Error("Proxy call failed");
+
+    const data = await response.json();
+    const contentStr = data.choices?.[0]?.message?.content || "";
+
+    // ⚠️ Important: Attempt to parse the JSON string from the LLM
+    // If your schema is a primitive string, you might skip this.
+    let parsedData = contentStr;
+    try {
+      parsedData = JSON.parse(contentStr);
+    } catch {
+      // Keep as string if parsing fails (or if the schema expects a raw string)
+    }
+
+    return {
+      data: parsedData,
+      tokens: data.usage?.total_tokens || 0,
+      estimatedUSD: ((data.usage?.total_tokens || 0) / 1000) * 0.002,
+    };
+  },
+};
+
+// Usage
+const { data } = useAI({
+  prompt: "Analyze this",
+  schema: z.object({ summary: z.string() }),
+  provider: proxyProvider, // ✅ Secure!
+});
+```
+
+This pattern keeps your API keys server-side while still using all of react-ai-query's features.
+
 ### LLM Quirk Handling
 
 LLMs sometimes return unexpected formats. react-ai-query handles common quirks automatically:
