@@ -463,15 +463,16 @@ const { data: enabled } = useAI({
 
 ## Comparison
 
-| Feature                 | react-ai-query | Vercel AI SDK   | CopilotKit |
-| ----------------------- | -------------- | --------------- | ---------- |
-| Schema validation (Zod) | ✅ Built-in    | ✅ Yes          | ❌ No      |
-| Headless render props   | ✅ Yes         | ❌ No           | ❌ No      |
-| Session caching         | ✅ Built-in    | ❌ Manual       | ❌ No      |
-| Cost tracking           | ✅ Built-in    | ❌ No           | ❌ No      |
-| Deterministic default   | ✅ temp=0      | ❌ No           | ❌ No      |
-| Fallback values         | ✅ Built-in    | ❌ Manual       | ❌ No      |
-| Focus                   | Data inference | Infra/streaming | Chat UI    |
+| Feature                 | react-ai-query | Vercel AI SDK   | CopilotKit | LangChain.js  | Instructor        |
+| ----------------------- | -------------- | --------------- | ---------- | ------------- | ----------------- |
+| Schema validation (Zod) | ✅ Built-in    | ✅ Yes          | ❌ No      | ❌ Manual     | ✅ Yes            |
+| React hooks/components  | ✅ Yes         | ✅ Yes          | ✅ Yes     | ❌ No         | ❌ No             |
+| Headless render props   | ✅ Yes         | ❌ No           | ❌ No      | ❌ No         | ❌ No             |
+| Session caching         | ✅ Built-in    | ❌ Manual       | ❌ No      | ❌ Manual     | ❌ No             |
+| Cost tracking           | ✅ Built-in    | ❌ No           | ❌ No      | ❌ No         | ❌ No             |
+| Deterministic default   | ✅ temp=0      | ❌ No           | ❌ No      | ❌ No         | ❌ No             |
+| Fallback values         | ✅ Built-in    | ❌ Manual       | ❌ No      | ❌ Manual     | ❌ No             |
+| Focus                   | Data inference | Infra/streaming | Chat UI    | Orchestration | Structured output |
 
 ## Development
 
