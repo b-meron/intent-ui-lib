@@ -3,7 +3,7 @@ import { deriveCost, estimateUSD } from "../core/cost";
 import { stableStringify, zodToJsonExample, isPrimitiveSchema, getPrimitiveTypeName, unwrapLLMResponse } from "../core/utils";
 
 export interface GroqProviderConfig {
-    apiKey?: string;
+    apiKey: string;
     model?: string;
 }
 
@@ -30,7 +30,7 @@ class GroqProviderImpl implements AIProvider {
     name = "groq";
     private config: GroqProviderConfig;
 
-    constructor(config: GroqProviderConfig = {}) {
+    constructor(config: GroqProviderConfig) {
         this.config = config;
     }
 
@@ -134,5 +134,5 @@ class GroqProviderImpl implements AIProvider {
     }
 }
 
-export const createGroqProvider = (config: GroqProviderConfig = {}) => new GroqProviderImpl(config);
+export const createGroqProvider = (config: GroqProviderConfig) => new GroqProviderImpl(config);
 

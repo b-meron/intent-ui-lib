@@ -5,10 +5,10 @@ import { executeAI } from "../src/core/execution";
 
 describe("executeAI", () => {
     it("returns mock data for string schema", async () => {
-        const result = await executeAI({
+        const result = await executeAI<string>({
             prompt: "Test prompt",
             schema: z.string(),
-            provider: "mock",
+            provider: mockProvider,
         });
 
         expect(typeof result.data).toBe("string");
@@ -21,17 +21,17 @@ describe("executeAI", () => {
     it("caches results on second call", async () => {
         const prompt = "Cached prompt test " + Date.now();
 
-        const result1 = await executeAI({
+        const result1 = await executeAI<string>({
             prompt,
             schema: z.string(),
-            provider: "mock",
+            provider: mockProvider,
             cache: "session",
         });
 
-        const result2 = await executeAI({
+        const result2 = await executeAI<string>({
             prompt,
             schema: z.string(),
-            provider: "mock",
+            provider: mockProvider,
             cache: "session",
         });
 
@@ -45,11 +45,11 @@ describe("executeAI", () => {
         const impossibleSchema = z.number().refine((n) => n > 1000000, {
             message: "Number must be greater than 1000000"
         });
-        
-        const result = await executeAI({
+
+        const result = await executeAI<number>({
             prompt: "Test",
             schema: impossibleSchema,
-            provider: "mock",
+            provider: mockProvider,
             fallback: 999,
         });
 

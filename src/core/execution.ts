@@ -1,27 +1,22 @@
-import { AIError, AIExecutionResult, AnyZodSchema, CachePolicy, ProviderKind } from "./types";
+import { AIError, AIExecutionResult, AIProvider, AnyZodSchema, CachePolicy } from "./types";
 import { buildCacheKey, getFromSessionCache, setSessionCache } from "./cache";
 import { deriveCost } from "./cost";
 import { mockProvider } from "../providers/mock";
-import { openAIProvider } from "../providers/openai";
-import { localProvider } from "../providers/local";
 import { sanitizeInput, sanitizePrompt } from "./sanitize";
 
 const defaultTimeout = 15000;
 const defaultRetry = 1;
 const defaultTemperature = 0;
 
-const selectProvider = (provider?: ProviderKind) => {
-  if (!provider || provider === "mock") return mockProvider;
-  if (provider === "openai") return openAIProvider;
-  if (provider === "local") return localProvider;
-  return provider;
+const selectProvider = (provider?: AIProvider) => {
+  return provider ?? mockProvider;
 };
 
 export const executeAI = async <T>(args: {
   prompt: string;
   input?: unknown;
   schema: AnyZodSchema;
-  provider?: ProviderKind;
+  provider?: AIProvider;
   temperature?: number;
   cache?: CachePolicy;
   timeoutMs?: number;

@@ -1,12 +1,12 @@
 import React from "react";
 import { useAI } from "../core/useAI";
-import { AIError, AnyZodSchema, CachePolicy, ProviderKind } from "../core/types";
+import { AIError, AIProvider, AnyZodSchema, CachePolicy } from "../core/types";
 
 interface AITextProps<T> {
   prompt: string;
   input?: unknown;
   schema: AnyZodSchema;
-  provider?: ProviderKind;
+  provider?: AIProvider;
   temperature?: number;
   cache?: CachePolicy;
   timeoutMs?: number;

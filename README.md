@@ -124,7 +124,7 @@ const {
   prompt: "Explain this error", // required
   input: { error }, // optional context
   schema: z.string(), // required Zod schema
-  provider: "mock", // "mock" | "openai" | "local" | custom
+  provider: mockProvider, // default: mockProvider
   temperature: 0, // default: 0 (deterministic)
   cache: "session", // "session" | false
   timeoutMs: 15000, // default: 15s
@@ -147,13 +147,13 @@ Headless render-prop component wrapping `useAI`:
 
 ### Providers
 
-| Provider             | Use Case                                                  |
-| -------------------- | --------------------------------------------------------- |
-| `mockProvider`       | Development, deterministic, zero cost                     |
-| `createGroqProvider` | Free cloud LLMs via Groq, uses `llama-3.1-8b-instant`     |
-| `openAIProvider`     | Production, uses `gpt-4o-mini`, requires `OPENAI_API_KEY` |
-| `localProvider`      | Local LLMs (Ollama, LM Studio), $0 cost                   |
-| Custom               | Implement `AIProvider` interface                          |
+| Provider              | Use Case                                              |
+| --------------------- | ----------------------------------------------------- |
+| `mockProvider`        | Development, deterministic, zero cost                 |
+| `createGroqProvider`  | Free cloud LLMs via Groq, uses `llama-3.1-8b-instant` |
+| `createOpenAIProvider`| Production, uses `gpt-4o-mini` by default             |
+| `createLocalProvider` | Local LLMs (Ollama, LM Studio), $0 cost               |
+| Custom                | Implement `AIProvider` interface                      |
 
 #### Groq Provider (Free)
 
@@ -169,6 +169,41 @@ const { data } = useAI({
   input: { text },
   schema: z.string(),
   provider: groqProvider,
+});
+```
+
+#### OpenAI Provider
+
+```tsx
+import { createOpenAIProvider, useAI } from "intent-ui-lib";
+
+const openaiProvider = createOpenAIProvider({ 
+  apiKey: "your-openai-api-key",
+  model: "gpt-4o-mini", // optional, this is the default
+});
+
+const { data } = useAI({
+  prompt: "Analyze this data",
+  input: { data },
+  schema: z.object({ summary: z.string() }),
+  provider: openaiProvider,
+});
+```
+
+#### Local Provider (Ollama, LM Studio)
+
+```tsx
+import { createLocalProvider, useAI } from "intent-ui-lib";
+
+const localProvider = createLocalProvider({
+  endpoint: "http://localhost:11434/v1/chat/completions", // Ollama default
+  model: "llama3",
+});
+
+const { data } = useAI({
+  prompt: "Explain this concept",
+  schema: z.string(),
+  provider: localProvider,
 });
 ```
 

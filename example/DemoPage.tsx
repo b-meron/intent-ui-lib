@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { createGroqProvider, createOpenAIProvider, localProvider, mockProvider } from "../src";
+import { createGroqProvider, createOpenAIProvider, createLocalProvider, mockProvider } from "../src";
 import { GROQ_KEY_STORAGE, OPENAI_KEY_STORAGE, ProviderChoice } from "./helpers";
 import { SCENARIOS, ScenarioId } from "./scenarios";
 import {
@@ -42,7 +42,7 @@ export default function DemoPage() {
   // Create provider instance
   const provider = useMemo(() => {
     if (providerName === "openai") return createOpenAIProvider({ apiKey: openaiApiKey });
-    if (providerName === "local") return localProvider;
+    if (providerName === "local") return createLocalProvider();
     if (providerName === "groq") return createGroqProvider({ apiKey: groqApiKey });
     return mockProvider;
   }, [providerName, groqApiKey, openaiApiKey]);

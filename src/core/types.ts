@@ -1,8 +1,5 @@
 import { ZodType } from "zod";
 
-export type ProviderName = "mock" | "openai" | "local";
-export type ProviderKind = ProviderName | AIProvider;
-
 // Completely decoupled schema type to avoid TypeScript depth errors
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyZodSchema = ZodType<any, any, any>;
@@ -38,7 +35,7 @@ export interface UseAIOptions<T> {
   prompt: string;
   input?: unknown;
   schema: AnyZodSchema;
-  provider?: ProviderKind;
+  provider?: AIProvider;
   temperature?: number;
   cache?: "session" | false;
   timeoutMs?: number;

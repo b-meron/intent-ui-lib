@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { executeAI } from "./execution";
-import { AIError, ProviderKind, UseAIOptions, UseAIResult } from "./types";
+import { AIError, AIProvider, UseAIOptions, UseAIResult } from "./types";
 
 /**
  * Stable JSON serialization for dependency comparison.
@@ -81,7 +81,7 @@ export function useAI<T>(options: UseAIOptions<T>): UseAIResult<T> {
         prompt: currentOptions.prompt,
         input: currentOptions.input,
         schema: currentOptions.schema,
-        provider: currentOptions.provider as ProviderKind,
+        provider: currentOptions.provider as AIProvider,
         temperature: currentOptions.temperature,
         cache: currentOptions.cache,
         timeoutMs: currentOptions.timeoutMs,

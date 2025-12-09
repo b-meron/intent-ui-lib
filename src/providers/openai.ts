@@ -5,38 +5,13 @@ import { AIError } from "../core/types";
 import { stableStringify, zodToJsonExample, unwrapLLMResponse } from "../core/utils";
 
 export interface OpenAIProviderConfig {
-  apiKey?: string;
+  apiKey: string;
   model?: string;
   baseURL?: string;
   dangerouslyAllowBrowser?: boolean;
 }
 
 const DEFAULT_MODEL = "gpt-4o-mini";
-
-const resolveEnv = (key: string): string | undefined => {
-  if (typeof process !== "undefined" && process.env && process.env[key]) return process.env[key];
-  if (typeof globalThis !== "undefined") {
-    const fromGlobal = (globalThis as unknown as { [k: string]: string | undefined })[key];
-    if (fromGlobal) return fromGlobal;
-  }
-  if (typeof import.meta !== "undefined") {
-    const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
-    if (env?.[key]) return env[key];
-  }
-  return undefined;
-};
-
-const getClient = (config: OpenAIProviderConfig = {}) => {
-  const apiKey = config.apiKey ?? resolveEnv("OPENAI_API_KEY");
-  if (!apiKey) {
-    throw new AIError("Missing OPENAI_API_KEY", "configuration");
-  }
-  return new OpenAI({
-    apiKey,
-    baseURL: config.baseURL,
-    dangerouslyAllowBrowser: config.dangerouslyAllowBrowser ?? true
-  });
-};
 
 const safeJsonParse = (content: string): unknown => {
   try {
@@ -49,13 +24,18 @@ const safeJsonParse = (content: string): unknown => {
 class OpenAIProviderImpl implements AIProvider {
   name = "openai";
   private config: OpenAIProviderConfig;
+  private client: OpenAI;
 
-  constructor(config: OpenAIProviderConfig = {}) {
+  constructor(config: OpenAIProviderConfig) {
     this.config = config;
+    this.client = new OpenAI({
+      apiKey: config.apiKey,
+      baseURL: config.baseURL,
+      dangerouslyAllowBrowser: config.dangerouslyAllowBrowser ?? true
+    });
   }
 
   async execute<T>({ prompt, input, schema, temperature, signal }: ProviderExecuteArgs): Promise<AIExecutionResult<T>> {
-    const client = getClient(this.config);
 
     // Generate JSON example from Zod schema
     const schemaExample = zodToJsonExample(schema);
@@ -75,7 +55,7 @@ class OpenAIProviderImpl implements AIProvider {
       "Return JSON: { \"data\": <your_response> }"
     ].filter(Boolean).join("\n");
 
-    const completion = await client.chat.completions.create({
+    const completion = await this.client.chat.completions.create({
       model: this.config.model ?? DEFAULT_MODEL,
       temperature: temperature ?? 0,
       messages: [
@@ -113,5 +93,4 @@ class OpenAIProviderImpl implements AIProvider {
   }
 }
 
-export const createOpenAIProvider = (config: OpenAIProviderConfig = {}) => new OpenAIProviderImpl(config);
-export const openAIProvider = new OpenAIProviderImpl();
+export const createOpenAIProvider = (config: OpenAIProviderConfig) => new OpenAIProviderImpl(config);

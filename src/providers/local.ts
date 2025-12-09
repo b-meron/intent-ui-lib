@@ -145,4 +145,3 @@ class LocalProviderImpl implements AIProvider {
 }
 
 export const createLocalProvider = (config: LocalProviderConfig = {}) => new LocalProviderImpl(config);
-export const localProvider = new LocalProviderImpl();
