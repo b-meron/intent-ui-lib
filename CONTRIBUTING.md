@@ -1,4 +1,4 @@
-# Contributing to Intent UI Library
+# Contributing to react ai query
 
 Thanks for your interest in contributing! 🎉
 

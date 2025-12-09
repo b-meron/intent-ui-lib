@@ -1,4 +1,4 @@
-# Intent UI Library
+# react ai query
 
 [![CI](https://github.com/b-meron/react-ai-query/actions/workflows/ci.yml/badge.svg)](https://github.com/b-meron/react-ai-query/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/react-ai-query.svg)](https://www.npmjs.com/package/react-ai-query)

@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial release of Intent UI Library
+- Initial release of react ai query
 - `useAI<T>()` hook for schema-safe AI inference
 - `<AIText />` headless component with render props
 - Mock provider for deterministic, zero-cost development
@@ -25,4 +25,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Typed `AIError` with error codes
 - Vite + Tailwind demo environment
 - Full documentation and examples
-
