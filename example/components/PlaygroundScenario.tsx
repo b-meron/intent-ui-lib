@@ -3,6 +3,7 @@ import { AIProvider } from "../../src/core/types";
 import { ScenarioId, SCENARIOS, ERROR_EXAMPLES } from "../scenarios";
 import { scenarioConfigs } from "../scenarioConfigs";
 import { AIResultPanel } from "./AIResultPanel";
+import { SystemPromptPreview } from "./SystemPromptPreview";
 
 interface PlaygroundScenarioProps {
   scenarioId: ScenarioId;
@@ -92,6 +93,13 @@ export const PlaygroundScenario = ({ scenarioId, provider }: PlaygroundScenarioP
             Reset
           </button>
         </div>
+        
+        {/* System Prompt Preview - shows what actually goes to the AI */}
+        <SystemPromptPreview
+          systemPrompt={scenario.prompt}
+          userInput={isDropdownInput ? selectedError.error : input}
+          inputLabel={isDropdownInput ? "Error Object" : "Your Input"}
+        />
       </div>
 
       {/* Result Section */}

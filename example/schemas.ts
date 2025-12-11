@@ -69,3 +69,15 @@ export const apiRequestSchema = z.object({
 
 export type ApiRequest = z.infer<typeof apiRequestSchema>;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// STREAMING RESPONSE
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const streamingResponseSchema = z.object({
+  content: z.string(),
+  wordCount: z.number(),
+  mood: z.enum(["inspiring", "thoughtful", "playful", "dramatic", "serene"])
+});
+
+export type StreamingResponse = z.infer<typeof streamingResponseSchema>;
+

@@ -43,9 +43,11 @@ const buildOptionsKey = <T>(options: UseAIOptions<T>): string => {
     options.prompt,
     stableStringify(options.input),
     options.temperature ?? 0,
+    options.maxTokens ?? "",
     options.cache ?? "session",
     options.timeoutMs ?? 15000,
     options.retry ?? 1,
+    stableStringify(options.providerOptions),
   ].join("::");
 };
 
@@ -83,10 +85,12 @@ export function useAI<T>(options: UseAIOptions<T>): UseAIResult<T> {
         schema: currentOptions.schema,
         provider: currentOptions.provider as AIProvider,
         temperature: currentOptions.temperature,
+        maxTokens: currentOptions.maxTokens,
         cache: currentOptions.cache,
         timeoutMs: currentOptions.timeoutMs,
         retry: currentOptions.retry,
-        fallback: currentOptions.fallback
+        fallback: currentOptions.fallback,
+        providerOptions: currentOptions.providerOptions,
       });
       setData(result.data);
       setTokens(result.tokens);

@@ -39,6 +39,12 @@ const SCHEMA_CODE: Record<ScenarioId, string> = {
   endpoint: z.string(),
   queryParams: z.array(z.object({ key: z.string(), value: z.string() })),
   description: z.string()
+});`,
+
+  streaming: `const streamingResponseSchema = z.object({
+  content: z.string(),
+  wordCount: z.number(),
+  mood: z.enum(["inspiring", "thoughtful", "playful", "dramatic", "serene"])
 });`
 };
 
@@ -76,7 +82,19 @@ const USAGE_CODE: Record<ScenarioId, string> = {
   input: { request: naturalLanguageQuery },
   schema: apiRequestSchema,
   fallback: { method: "GET", endpoint: "/api/unknown", queryParams: [] }
-});`
+});`,
+
+  streaming: `// ⚡ Streaming with real-time text updates
+const { text, data, isStreaming, done, start, abort } = useAIStream({
+  prompt: "Write a creative response",
+  input: { userPrompt },
+  schema: streamingResponseSchema,
+  provider: openaiProvider, // Must support streaming
+  onChunk: (chunk) => console.log(chunk.delta), // Optional
+});
+
+// 'text' updates in real-time as chunks arrive
+// 'data' is only available when 'done' is true (schema validated)`
 };
 
 interface SchemaViewerProps {

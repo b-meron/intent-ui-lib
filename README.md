@@ -11,6 +11,29 @@
 
 **[▶️ Try the Live Demo](https://b-meron.github.io/react-ai-query/)**
 
+## Table of Contents
+
+- [Problem](#problem)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Core Principles](#core-principles)
+- [How It Works](#how-it-works)
+- [API Reference](#api-reference)
+  - [Hooks](#hooks)
+  - [Components](#components)
+  - [Providers](#providers)
+  - [Utilities](#utilities)
+  - [Types](#types)
+- [Advanced Usage](#advanced-usage)
+  - [Controlling Output](#controlling-output-with-maxtokens-and-provideroptions)
+  - [Custom Providers](#custom-providers)
+  - [Security: API Keys in Production](#security-api-keys-in-production)
+- [Examples](#examples)
+- [Comparison](#comparison)
+- [Development](#development)
+- [Roadmap](#roadmap)
+- [License](#license)
+
 ## Problem
 
 Raw AI output is unsafe to render in UI. You need:
@@ -19,6 +42,7 @@ Raw AI output is unsafe to render in UI. You need:
 - ✅ **Strict schema validation** — Zod-validated, typed results
 - ✅ **Cost awareness** — token counting, USD estimation, caching
 - ✅ **Headless rendering** — you control the DOM, not the library
+- ✅ **Streaming support** — real-time responses with schema validation
 
 This library enforces all of these guarantees.
 
@@ -29,6 +53,8 @@ npm install react-ai-query zod react
 ```
 
 ## Quick Start
+
+### Standard (Non-Streaming)
 
 ```tsx
 import { z } from "zod";
@@ -48,6 +74,43 @@ export function ErrorSummary({ error }: { error: Error }) {
   );
 }
 ```
+
+### With Streaming
+
+```tsx
+import { z } from "zod";
+import { useAIStream, createOpenAIProvider } from "react-ai-query";
+
+const provider = createOpenAIProvider({ apiKey: "..." });
+
+export function StreamingSummary({ error }: { error: Error }) {
+  const { text, done, isStreaming } = useAIStream({
+    prompt: "Explain this error to a non-technical user",
+    input: { error },
+    schema: z.string(),
+    provider,
+  });
+
+  return (
+    <p className={isStreaming ? "animate-pulse" : ""}>
+      {text}
+      {done && " ✓"}
+    </p>
+  );
+}
+```
+
+## Core Principles
+
+| Principle         | Implementation                                           |
+| ----------------- | -------------------------------------------------------- |
+| **Deterministic** | Temperature defaults to `0`, inputs sanitized            |
+| **Schema-safe**   | Auto schema injection + Zod validation before rendering  |
+| **Fail-safe**     | Retries + timeouts + typed errors + observable fallbacks |
+| **Headless**      | Render props only — no UI opinions                       |
+| **Cost-aware**    | Token counting, USD estimation, session caching          |
+| **Pluggable**     | Mock, OpenAI, Groq, local LLM, or custom providers       |
+| **Streaming**     | Real-time responses with `useAIStream` and `<AIStream>`  |
 
 ## How It Works
 
@@ -71,81 +134,144 @@ schema: z.object({
 
 You declare intent, we handle the rest.
 
-## Core Principles
-
-| Principle         | Implementation                                           |
-| ----------------- | -------------------------------------------------------- |
-| **Deterministic** | Temperature defaults to `0`, inputs sanitized            |
-| **Schema-safe**   | Auto schema injection + Zod validation before rendering  |
-| **Fail-safe**     | Retries + timeouts + typed errors + observable fallbacks |
-| **Headless**      | Render props only — no UI opinions                       |
-| **Cost-aware**    | Token counting, USD estimation, session caching          |
-| **Pluggable**     | Mock, OpenAI, local LLM, or custom providers             |
-
-## Fallback Observability
-
-When AI fails (timeout, validation error, provider error), the library gracefully falls back to your default value. You can **observe** when this happens:
-
-```tsx
-const { data, usedFallback, fallbackReason } = useAI({
-  prompt: "Summarize this article",
-  input: { article },
-  schema: z.string(),
-  fallback: "Summary unavailable",
-});
-
-// Know when fallback was used
-if (usedFallback) {
-  console.log(`AI failed: ${fallbackReason}`);
-  // e.g., "AI call timed out" or "Provider returned invalid shape"
-}
-```
-
-| Field            | Type      | Description                               |
-| ---------------- | --------- | ----------------------------------------- |
-| `usedFallback`   | `boolean` | `true` if AI failed and fallback was used |
-| `fallbackReason` | `string`  | Why the fallback was triggered            |
-
-This enables better UX decisions, debugging, and analytics.
+---
 
 ## API Reference
 
-### `useAI<T>(options)`
+### Hooks
+
+#### `useAI<T>(options): UseAIResult<T>`
+
+The primary hook for non-streaming AI inference.
 
 ```tsx
+import { useAI } from "react-ai-query";
+import { z } from "zod";
+
 const {
-  data,
-  loading,
-  error,
-  cost,
-  fromCache,
-  usedFallback,
-  fallbackReason,
-  refresh,
+  data, // T | undefined - validated response data
+  loading, // boolean - request in progress
+  error, // AIError | undefined - error if failed
+  cost, // CostBreakdown | undefined - { tokens, estimatedUSD }
+  fromCache, // boolean | undefined - served from cache?
+  usedFallback, // boolean | undefined - fallback was used?
+  fallbackReason, // string | undefined - why fallback triggered
+  refresh, // () => Promise<void> - manually re-execute
 } = useAI({
-  prompt: "Explain this error", // required
-  input: { error }, // optional context
-  schema: z.string(), // required Zod schema
-  provider: mockProvider, // default: mockProvider
-  temperature: 0, // default: 0 (deterministic)
+  // Required
+  prompt: "Explain this error",
+  schema: z.string(),
+
+  // Optional
+  input: { error }, // Context data
+  provider: mockProvider, // Default: mockProvider
+  temperature: 0, // Default: 0 (deterministic)
+  maxTokens: 500, // Limit output length (prevents runaway)
   cache: "session", // "session" | false
-  timeoutMs: 15000, // default: 15s
-  retry: 1, // retries after first attempt
-  fallback: "Default text", // used on failure
+  timeoutMs: 15000, // Default: 15000ms
+  retry: 1, // Retry attempts after first failure
+  fallback: "Default text", // Value to use on failure
+  providerOptions: { // Pass additional options to provider
+    topP: 0.9,
+    frequencyPenalty: 0.5,
+  },
 });
 ```
 
-### `<AIText />`
+#### `useAIStream<T>(options): UseAIStreamResult<T>`
+
+Real-time streaming hook powered by [Vercel AI SDK](https://sdk.vercel.ai) core primitives.
+
+```tsx
+import { useAIStream, createOpenAIProvider } from "react-ai-query";
+import { z } from "zod";
+
+const provider = createOpenAIProvider({ apiKey: "..." });
+
+const {
+  text, // string - raw streaming text (updates real-time)
+  data, // T | undefined - validated data (when done)
+  isStreaming, // boolean - currently streaming?
+  done, // boolean - stream complete?
+  loading, // boolean - initial loading state
+  error, // AIError | undefined - error if failed
+  cost, // CostBreakdown | undefined - available when done
+  start, // () => Promise<void> - start/restart stream
+  abort, // () => void - abort current stream
+  refresh, // () => Promise<void> - alias for start
+} = useAIStream({
+  // Required
+  prompt: "Write a haiku about React",
+  schema: z.object({ haiku: z.string() }),
+  provider,
+
+  // Optional
+  input: { topic: "hooks" },
+  temperature: 0, // Default: 0
+  maxTokens: 500, // Limit output length (prevents runaway)
+  timeoutMs: 30000, // Default: 30000ms
+  retry: 1, // Retry attempts
+  fallback: { haiku: "..." }, // Fallback value
+  onChunk: (chunk) => {}, // Called on each chunk
+  manual: false, // If true, don't auto-start
+  providerOptions: { topP: 0.9 }, // Additional provider options
+});
+```
+
+---
+
+### Components
+
+#### `<AIText />`
 
 Headless render-prop component wrapping `useAI`:
 
 ```tsx
-<AIText prompt="..." input={...} schema={z.string()}>
-  {(data, { loading, error, cost, fromCache, usedFallback, fallbackReason, refresh }) => (
-    // You control rendering
-  )}
-</AIText>
+import { AIText } from "react-ai-query";
+import { z } from "zod";
+
+<AIText
+  prompt="Summarize this article"
+  input={{ article }}
+  schema={z.string()}
+  provider={openaiProvider}
+  fallback="Summary unavailable"
+>
+  {(
+    data,
+    { loading, error, cost, fromCache, usedFallback, fallbackReason, refresh }
+  ) => (loading ? <Spinner /> : <p>{data}</p>)}
+</AIText>;
 ```
+
+#### `<AIStream />`
+
+Declarative streaming component with render props:
+
+```tsx
+import { AIStream, createGroqProvider } from "react-ai-query";
+import { z } from "zod";
+
+const provider = createGroqProvider({ apiKey: "..." });
+
+<AIStream
+  prompt="Write a short story about a robot"
+  schema={z.object({ story: z.string() })}
+  provider={provider}
+  onChunk={(chunk) => console.log("Delta:", chunk.delta)}
+>
+  {(text, data, { isStreaming, done, error, cost, start, abort }) => (
+    <div>
+      {isStreaming && <span className="animate-spin">⏳</span>}
+      <p style={{ whiteSpace: "pre-wrap" }}>{text}</p>
+      {done && <p className="text-green-500">✓ Complete</p>}
+      {error && <p className="text-red-500">{error.message}</p>}
+    </div>
+  )}
+</AIStream>;
+```
+
+---
 
 ### Providers
 
@@ -209,7 +335,410 @@ const { data } = useAI({
 });
 ```
 
-### ⚠️ Security: API Keys in Production
+---
+
+### Utilities
+
+#### `caseInsensitiveEnum(values)`
+
+LLMs often return enum values in different cases. Use this helper for case-insensitive enum validation:
+
+```tsx
+import { caseInsensitiveEnum } from "react-ai-query";
+import { z } from "zod";
+
+const schema = z.object({
+  sentiment: caseInsensitiveEnum(["positive", "neutral", "negative"]),
+});
+
+// All of these will validate successfully:
+// { sentiment: "positive" }
+// { sentiment: "POSITIVE" }
+// { sentiment: "Positive" }
+```
+
+#### `zodToJsonExample(schema)`
+
+Converts a Zod schema to the JSON example string injected into LLM prompts. Useful for debugging or custom providers:
+
+```tsx
+import { zodToJsonExample } from "react-ai-query";
+import { z } from "zod";
+
+const schema = z.object({
+  approved: z.boolean(),
+  reason: z.string(),
+});
+
+console.log(zodToJsonExample(schema));
+// {"approved":true,"reason":"string"}
+```
+
+#### `clearSessionCache()`
+
+Clears the in-memory session cache. Useful for testing or when you want to force fresh AI calls:
+
+```tsx
+import { clearSessionCache } from "react-ai-query";
+
+// Clear all cached AI responses
+clearSessionCache();
+```
+
+#### Provider Utilities
+
+These utilities are exported for custom provider authors:
+
+| Utility                                                                      | Description                                            |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `isPrimitiveSchema(schema)`                                                  | Returns `true` if schema is string, number, or boolean |
+| `getPrimitiveTypeName(schema)`                                               | Returns `"string"`, `"number"`, `"boolean"`, or `null` |
+| `buildSystemPrompt(isPrimitive)`                                             | Builds the system prompt for LLM requests              |
+| `buildUserContent(prompt, input, schemaExample, isPrimitive, primitiveType)` | Builds user message content                            |
+| `parseAndValidateResponse(content, schema, isPrimitive, providerName)`       | Parses and validates non-streaming response            |
+| `parseAndValidateStreamResponse(content, schema, providerName)`              | Parses and validates streaming response                |
+| `safeJsonParse(content)`                                                     | Safely parses JSON, returns `undefined` on failure     |
+| `unwrapLLMResponse(parsed, schema)`                                          | Unwraps common LLM wrappers like `{"data": ...}`       |
+
+---
+
+### Types
+
+All types are exported from the main package:
+
+```tsx
+import type {
+  // Hook types
+  UseAIOptions,
+  UseAIResult,
+  UseAIStreamOptions,
+  UseAIStreamResult,
+
+  // Provider types
+  AIProvider,
+  AIStreamProvider,
+  AIExecutionResult,
+  ProviderExecuteArgs,
+  StreamExecuteArgs,
+  StreamChunk,
+
+  // Common types
+  AIError,
+  ErrorCode,
+  CostBreakdown,
+  CachePolicy,
+  AnyZodSchema,
+} from "react-ai-query";
+```
+
+#### `AIProvider`
+
+Base interface for non-streaming providers:
+
+```tsx
+interface AIProvider {
+  name: string;
+  execute<T>(args: ProviderExecuteArgs): Promise<AIExecutionResult<T>>;
+}
+```
+
+#### `AIStreamProvider`
+
+Extended interface for streaming providers:
+
+```tsx
+interface AIStreamProvider extends AIProvider {
+  supportsStreaming: boolean;
+  executeStream<T>(args: StreamExecuteArgs): Promise<AIExecutionResult<T>>;
+}
+```
+
+#### `ProviderExecuteArgs`
+
+Arguments passed to provider's `execute` method:
+
+```tsx
+interface ProviderExecuteArgs {
+  prompt: string;
+  input?: unknown;
+  schema: AnyZodSchema;
+  temperature: number;
+  maxTokens?: number; // Limit output length
+  providerOptions?: Record<string, unknown>; // Additional provider options
+  signal?: AbortSignal;
+}
+```
+
+#### `StreamExecuteArgs`
+
+Arguments for streaming execution (extends `ProviderExecuteArgs`):
+
+```tsx
+interface StreamExecuteArgs extends ProviderExecuteArgs {
+  onChunk: (chunk: StreamChunk) => void;
+}
+```
+
+#### `StreamChunk`
+
+Represents a streaming chunk:
+
+```tsx
+interface StreamChunk {
+  text: string; // Accumulated text so far
+  delta: string; // Just the new content
+  done: boolean; // Whether stream is complete
+}
+```
+
+#### `AIExecutionResult<T>`
+
+Result from provider execution:
+
+```tsx
+interface AIExecutionResult<T> {
+  data: T;
+  tokens: number;
+  estimatedUSD: number;
+  fromCache?: boolean;
+  usedFallback?: boolean;
+  fallbackReason?: string;
+}
+```
+
+#### `CostBreakdown`
+
+Cost information returned from hooks:
+
+```tsx
+interface CostBreakdown {
+  tokens: number;
+  estimatedUSD: number;
+}
+```
+
+#### `AIError`
+
+Custom error class with categorized error codes:
+
+```tsx
+class AIError extends Error {
+  code: ErrorCode;
+  cause?: unknown;
+
+  constructor(message: string, code: ErrorCode, cause?: unknown);
+}
+```
+
+#### `ErrorCode`
+
+Categorized error codes:
+
+```tsx
+type ErrorCode =
+  | "validation_error" // Schema validation failed
+  | "provider_error" // Provider returned error
+  | "timeout" // Request timed out
+  | "fallback" // Fallback value was used
+  | "configuration"; // Missing/invalid config
+```
+
+#### `CachePolicy`
+
+Cache configuration options:
+
+```tsx
+type CachePolicy = "session" | false;
+```
+
+#### `AnyZodSchema`
+
+Generic Zod schema type for parameters:
+
+```tsx
+type AnyZodSchema = ZodType<any, any, any>;
+```
+
+---
+
+## Advanced Usage
+
+### Controlling Output with `maxTokens` and `providerOptions`
+
+You can control how the AI generates responses using `maxTokens` (first-class) and `providerOptions` (escape hatch for any provider-specific options):
+
+```tsx
+const { text } = useAIStream({
+  prompt: "Write a poem",
+  schema: z.string(),
+  provider,
+  
+  // First-class option - limit output length
+  maxTokens: 100, // Prevents runaway responses
+  
+  // Escape hatch - any provider-specific options
+  providerOptions: {
+    topP: 0.9,              // Nucleus sampling
+    frequencyPenalty: 0.5,  // Reduce repetition
+    presencePenalty: 0.3,   // Encourage new topics
+    seed: 42,               // Reproducibility
+    stop: ["\n\n"],         // Stop sequences
+  },
+});
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `maxTokens` | `number` | Maximum tokens to generate (prevents runaway) |
+| `providerOptions` | `Record<string, unknown>` | Passed directly to provider API |
+
+**Common `providerOptions`:**
+
+| Option | Description |
+|--------|-------------|
+| `topP` | Nucleus sampling (0-1) |
+| `topK` | Top-k sampling |
+| `frequencyPenalty` | Penalize repeated tokens |
+| `presencePenalty` | Penalize tokens that already appeared |
+| `stop` | Stop sequences (array of strings) |
+| `seed` | For reproducibility |
+| `logitBias` | Adjust token probabilities |
+
+These options are passed through to all providers (OpenAI, Groq, Local). Unknown options are ignored by providers that don't support them.
+
+### Custom Providers
+
+You can create custom providers by implementing the `AIProvider` interface:
+
+```tsx
+import type {
+  AIProvider,
+  ProviderExecuteArgs,
+  AIExecutionResult,
+} from "react-ai-query";
+import {
+  AIError,
+  zodToJsonExample,
+  parseAndValidateResponse,
+  isPrimitiveSchema,
+} from "react-ai-query";
+
+const customProvider: AIProvider = {
+  name: "custom",
+
+  async execute<T>({
+    prompt,
+    input,
+    schema,
+    temperature,
+    signal,
+  }: ProviderExecuteArgs): Promise<AIExecutionResult<T>> {
+    // Build request using exported utilities
+    const schemaExample = zodToJsonExample(schema);
+    const isPrimitive = isPrimitiveSchema(schema);
+
+    // Make your API call
+    const response = await fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        input,
+        schemaExample,
+        temperature,
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      throw new AIError("Custom provider failed", "provider_error");
+    }
+
+    const { content, tokens } = await response.json();
+
+    // Parse and validate using exported utility
+    const data = parseAndValidateResponse<T>(
+      content,
+      schema,
+      isPrimitive,
+      "Custom"
+    );
+
+    return {
+      data,
+      tokens: tokens ?? 0,
+      estimatedUSD: ((tokens ?? 0) / 1000) * 0.002,
+    };
+  },
+};
+
+// Usage
+const { data } = useAI({
+  prompt: "Analyze this",
+  schema: z.object({ summary: z.string() }),
+  provider: customProvider,
+});
+```
+
+For streaming providers, also implement `AIStreamProvider`:
+
+```tsx
+import type { AIStreamProvider, StreamExecuteArgs } from "react-ai-query";
+import {
+  zodToJsonExample,
+  isPrimitiveSchema,
+  getPrimitiveTypeName,
+  buildSystemPrompt,
+  buildUserContent,
+  parseAndValidateStreamResponse,
+} from "react-ai-query";
+
+const streamingProvider: AIStreamProvider = {
+  name: "custom-streaming",
+  supportsStreaming: true,
+
+  async execute<T>(args) {
+    /* same as above */
+  },
+
+  async executeStream<T>({
+    prompt,
+    input,
+    schema,
+    temperature,
+    signal,
+    onChunk,
+  }: StreamExecuteArgs) {
+    // Use utility functions to build prompts
+    const schemaExample = zodToJsonExample(schema);
+    const isPrimitive = isPrimitiveSchema(schema);
+    const primitiveType = getPrimitiveTypeName(schema);
+    const systemPrompt = buildSystemPrompt(isPrimitive);
+    const userContent = buildUserContent(
+      prompt,
+      input,
+      schemaExample,
+      isPrimitive,
+      primitiveType
+    );
+
+    // Stream from your API...
+    let fullText = "";
+    for await (const chunk of yourStreamingAPI(systemPrompt, userContent)) {
+      fullText += chunk;
+      onChunk({ text: fullText, delta: chunk, done: false });
+    }
+    onChunk({ text: fullText, delta: "", done: true });
+
+    // Validate final result
+    const data = parseAndValidateStreamResponse<T>(fullText, schema, "Custom");
+
+    return { data, tokens: 100, estimatedUSD: 0.0002 };
+  },
+};
+```
+
+### Security: API Keys in Production
 
 > **Important:** Never expose API keys directly in browser code for production applications.
 
@@ -295,11 +824,21 @@ app.listen(3001);
 Define a provider in your frontend that calls your secure endpoint:
 
 ```tsx
-import type { AIProvider } from "react-ai-query";
+import type {
+  AIProvider,
+  ProviderExecuteArgs,
+  AIExecutionResult,
+} from "react-ai-query";
+import { safeJsonParse, unwrapLLMResponse } from "react-ai-query";
 
 export const proxyProvider: AIProvider = {
   name: "proxy",
-  call: async ({ prompt, input }) => {
+
+  async execute<T>({
+    prompt,
+    input,
+    schema,
+  }: ProviderExecuteArgs): Promise<AIExecutionResult<T>> {
     const response = await fetch("/api/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -318,17 +857,18 @@ export const proxyProvider: AIProvider = {
     const data = await response.json();
     const contentStr = data.choices?.[0]?.message?.content || "";
 
-    // ⚠️ Important: Attempt to parse the JSON string from the LLM
-    // If your schema is a primitive string, you might skip this.
-    let parsedData = contentStr;
-    try {
-      parsedData = JSON.parse(contentStr);
-    } catch {
-      // Keep as string if parsing fails (or if the schema expects a raw string)
+    // Parse and unwrap the response
+    const parsed = safeJsonParse(contentStr);
+    const unwrapped = unwrapLLMResponse(parsed, schema);
+
+    // Validate against schema
+    const validated = schema.safeParse(unwrapped);
+    if (!validated.success) {
+      throw new Error("Invalid response from AI");
     }
 
     return {
-      data: parsedData,
+      data: validated.data as T,
       tokens: data.usage?.total_tokens || 0,
       estimatedUSD: ((data.usage?.total_tokens || 0) / 1000) * 0.002,
     };
@@ -343,9 +883,9 @@ const { data } = useAI({
 });
 ```
 
-This pattern keeps your API keys server-side while still using all of react-ai-query's features.
+---
 
-### LLM Quirk Handling
+## LLM Quirk Handling
 
 LLMs sometimes return unexpected formats. react-ai-query handles common quirks automatically:
 
@@ -355,59 +895,36 @@ LLMs sometimes return unexpected formats. react-ai-query handles common quirks a
 | Other wrappers (`{"result": ...}`, etc.)     | Auto-unwrapped for primitive schemas |
 | Extra text after JSON (`{...}\n\nNote: ...`) | Extracted JSON, ignored text         |
 | Extra whitespace                             | Trimmed before parsing               |
-| Enum casing (`"POSITIVE"` vs `"positive"`)   | **Opt-in** via helper (below)        |
+| Enum casing (`"POSITIVE"` vs `"positive"`)   | **Opt-in** via `caseInsensitiveEnum` |
 | Primitive schemas (string, number, boolean)  | Smart prompts to avoid JSON wrapping |
 
-### `caseInsensitiveEnum(values)`
+---
 
-LLMs often return enum values in different cases. Use this helper for case-insensitive enum validation:
+## Fallback Observability
 
-```tsx
-import { caseInsensitiveEnum } from "react-ai-query";
-import { z } from "zod";
-
-const schema = z.object({
-  sentiment: caseInsensitiveEnum(["positive", "neutral", "negative"]),
-});
-
-// All of these will validate successfully:
-// { sentiment: "positive" }
-// { sentiment: "POSITIVE" }
-// { sentiment: "Positive" }
-```
-
-This is explicit opt-in — you control which enums are case-insensitive.
-
-### `zodToJsonExample(schema)`
-
-Converts a Zod schema to the JSON example string injected into LLM prompts. Useful for debugging or custom providers:
+When AI fails (timeout, validation error, provider error), the library gracefully falls back to your default value. You can **observe** when this happens:
 
 ```tsx
-import { zodToJsonExample } from "react-ai-query";
-import { z } from "zod";
-
-const schema = z.object({
-  approved: z.boolean(),
-  reason: z.string(),
+const { data, usedFallback, fallbackReason } = useAI({
+  prompt: "Summarize this article",
+  input: { article },
+  schema: z.string(),
+  fallback: "Summary unavailable",
 });
 
-console.log(zodToJsonExample(schema));
-// {"approved":true,"reason":"string"}
-```
-
-## Provider Contract
-
-Providers return JSON, never React components:
-
-```json
-{
-  "data": "Your validated result",
-  "tokens": 42,
-  "estimatedUSD": 0.002
+// Know when fallback was used
+if (usedFallback) {
+  console.log(`AI failed: ${fallbackReason}`);
+  // e.g., "AI call timed out" or "Provider returned invalid shape"
 }
 ```
 
-Rendering is always client-side via `useAI()` or `<AIText />`.
+| Field            | Type      | Description                               |
+| ---------------- | --------- | ----------------------------------------- |
+| `usedFallback`   | `boolean` | `true` if AI failed and fallback was used |
+| `fallbackReason` | `string`  | Why the fallback was triggered            |
+
+---
 
 ## Cost Model
 
@@ -415,6 +932,8 @@ Rendering is always client-side via `useAI()` or `<AIText />`.
 - **USD estimation**: `tokens / 1000 * 0.002`
 - **Session caching**: Enabled by default, avoids repeated API calls
 - **Real usage**: If provider returns actual token count, it's used instead
+
+---
 
 ## Examples
 
@@ -461,6 +980,80 @@ const { data: enabled } = useAI({
 </AIText>
 ```
 
+### Streaming Response
+
+```tsx
+import { useAIStream, createOpenAIProvider } from "react-ai-query";
+import { z } from "zod";
+
+const provider = createOpenAIProvider({ apiKey: "..." });
+
+function StreamingExplanation({ topic }: { topic: string }) {
+  const { text, done, isStreaming, abort } = useAIStream({
+    prompt: `Explain ${topic} in simple terms`,
+    schema: z.object({ explanation: z.string() }),
+    provider,
+  });
+
+  return (
+    <div>
+      <p className={isStreaming ? "animate-pulse" : ""}>{text}</p>
+      {isStreaming && <button onClick={abort}>Stop</button>}
+      {done && <span className="text-green-500">✓</span>}
+    </div>
+  );
+}
+```
+
+### Typewriter Effect
+
+```tsx
+function TypewriterDemo() {
+  const [chars, setChars] = useState<string[]>([]);
+
+  const { text } = useAIStream({
+    prompt: "Explain quantum computing in one paragraph",
+    schema: z.object({ explanation: z.string() }),
+    provider,
+    onChunk: (chunk) => {
+      // Animate each character as it arrives
+      if (chunk.delta) {
+        setChars((prev) => [...prev, chunk.delta]);
+      }
+    },
+  });
+
+  return (
+    <p className="font-mono">
+      {chars.map((char, i) => (
+        <span key={i} className="animate-fade-in">
+          {char}
+        </span>
+      ))}
+      <span className="animate-blink">|</span>
+    </p>
+  );
+}
+```
+
+---
+
+## Provider Contract
+
+Providers return JSON, never React components:
+
+```json
+{
+  "data": "Your validated result",
+  "tokens": 42,
+  "estimatedUSD": 0.002
+}
+```
+
+Rendering is always client-side via `useAI()` or `<AIText />`.
+
+---
+
 ## Comparison
 
 | Feature                 | react-ai-query | Vercel AI SDK   | CopilotKit | LangChain.js  | Instructor        |
@@ -468,11 +1061,14 @@ const { data: enabled } = useAI({
 | Schema validation (Zod) | ✅ Built-in    | ✅ Yes          | ❌ No      | ❌ Manual     | ✅ Yes            |
 | React hooks/components  | ✅ Yes         | ✅ Yes          | ✅ Yes     | ❌ No         | ❌ No             |
 | Headless render props   | ✅ Yes         | ❌ No           | ❌ No      | ❌ No         | ❌ No             |
+| Streaming support       | ✅ Built-in    | ✅ Yes          | ✅ Yes     | ✅ Yes        | ❌ No             |
 | Session caching         | ✅ Built-in    | ❌ Manual       | ❌ No      | ❌ Manual     | ❌ No             |
 | Cost tracking           | ✅ Built-in    | ❌ No           | ❌ No      | ❌ No         | ❌ No             |
 | Deterministic default   | ✅ temp=0      | ❌ No           | ❌ No      | ❌ No         | ❌ No             |
 | Fallback values         | ✅ Built-in    | ❌ Manual       | ❌ No      | ❌ Manual     | ❌ No             |
 | Focus                   | Data inference | Infra/streaming | Chat UI    | Orchestration | Structured output |
+
+---
 
 ## Development
 
@@ -486,14 +1082,18 @@ npm run test      # Run tests
 
 Demo page in `example/DemoPage.tsx` shows all features.
 
+---
+
 ## Roadmap
 
-- [ ] Streaming support
+- [x] Streaming support (`useAIStream`, `<AIStream>`)
 - [ ] `<AIForm />` — AI-assisted form validation
 - [ ] `<AIDecision />` — boolean decisions with reasoning
 - [ ] Multi-step inference chains
 - [ ] Tool/function calling
 - [ ] Devtools & debug panel
+
+---
 
 ## License
 

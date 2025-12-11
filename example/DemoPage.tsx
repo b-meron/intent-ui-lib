@@ -8,10 +8,12 @@ import {
   Section,
   ScenarioTab,
   PlaygroundScenario,
+  StreamingPlayground,
   FeatureCard,
   FEATURES,
   SchemaViewer,
 } from "./components";
+import { AIStreamProvider } from "../src/core/types";
 
 export default function DemoPage() {
   // Provider state
@@ -77,7 +79,11 @@ export default function DemoPage() {
               ))}
             </div>
             <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-              <PlaygroundScenario scenarioId={activeScenario} provider={provider} />
+              {activeScenario === "streaming" ? (
+                <StreamingPlayground provider={provider as AIStreamProvider} />
+              ) : (
+                <PlaygroundScenario scenarioId={activeScenario} provider={provider} />
+              )}
             </div>
           </div>
         </Section>

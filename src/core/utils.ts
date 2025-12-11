@@ -1,5 +1,48 @@
 import { z } from "zod";
-import { AnyZodSchema } from "./types";
+import { AIError, AnyZodSchema } from "./types";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ABORT SIGNAL HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Combine multiple AbortSignals into one that aborts when ANY signal aborts.
+ * Uses native AbortSignal.any() when available (Node 20.3+, modern browsers),
+ * falls back to a manual implementation for older environments (Node 18).
+ * 
+ * @param signals - Array of AbortSignals to combine
+ * @returns A single AbortSignal that aborts when any input signal aborts
+ */
+export const combineAbortSignals = (signals: AbortSignal[]): AbortSignal => {
+  // Use native implementation when available (best performance)
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any(signals);
+  }
+
+  // Fallback for Node.js 18 and older browsers
+  const controller = new AbortController();
+
+  for (const signal of signals) {
+    // If any signal is already aborted, abort immediately
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      return controller.signal;
+    }
+
+    // Listen for future aborts
+    signal.addEventListener(
+      "abort",
+      () => controller.abort(signal.reason),
+      { once: true }
+    );
+  }
+
+  return controller.signal;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCHEMA HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Check if a Zod schema expects a primitive type (string, number, boolean).
@@ -204,5 +247,158 @@ const buildExample = (def: ZodDef): unknown => {
     default:
       return `<${typeName}>`;
   }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROMPT BUILDING HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build system prompt for AI provider.
+ * Handles both primitive (raw value) and object (JSON) schemas.
+ * 
+ * @param isPrimitive - Whether the schema expects a primitive type
+ * @returns System prompt string
+ */
+export const buildSystemPrompt = (isPrimitive: boolean): string => {
+  return isPrimitive
+    ? [
+      "You are a deterministic function.",
+      "Output ONLY the raw value requested. No JSON wrapping.",
+      "For strings: output just the text, no quotes.",
+      "For numbers: output just the number.",
+      "For booleans: output just true or false.",
+      "DO NOT wrap in objects like {\"data\": ...} or {\"result\": ...}.",
+      "DO NOT add notes, explanations, or any extra text.",
+    ].join(" ")
+    : [
+      "You are a deterministic JSON-only function.",
+      "Output ONLY the JSON object. No text before or after.",
+      "Use lowercase for enum values.",
+      "DO NOT add notes, explanations, or any text outside the JSON.",
+    ].join(" ");
+};
+
+/**
+ * Build user content for AI provider.
+ * Handles both primitive (raw value) and object (JSON) schemas.
+ * 
+ * @param prompt - The task/instruction
+ * @param input - Optional context data
+ * @param schemaExample - JSON example of expected format
+ * @param isPrimitive - Whether the schema expects a primitive type
+ * @param primitiveType - The primitive type name (string/number/boolean)
+ * @returns User content string
+ */
+export const buildUserContent = (
+  prompt: string,
+  input: unknown | undefined,
+  schemaExample: string,
+  isPrimitive: boolean,
+  primitiveType: string | null
+): string => {
+  return isPrimitive
+    ? [
+      `Task: ${prompt}`,
+      input ? `Context: ${stableStringify(input)}` : null,
+      `Return ONLY a ${primitiveType} value. No JSON, no wrapping, just the raw value.`
+    ].filter(Boolean).join("\n")
+    : [
+      `Task: ${prompt}`,
+      input ? `Context: ${stableStringify(input)}` : null,
+      `Required JSON format: ${schemaExample}`,
+      "Return ONLY the JSON object matching this format."
+    ].filter(Boolean).join("\n");
+};
+
+/**
+ * Parse raw LLM response content and validate against schema.
+ * Handles both primitive (raw value) and object (JSON) responses.
+ * 
+ * @param rawContent - The raw response content from the LLM
+ * @param schema - Zod schema to validate against
+ * @param isPrimitive - Whether the schema expects a primitive type
+ * @param providerName - Provider name for error messages
+ * @returns Validated data
+ * @throws {AIError} If parsing fails or validation fails
+ */
+export const parseAndValidateResponse = <T>(
+  rawContent: unknown,
+  schema: AnyZodSchema,
+  isPrimitive: boolean,
+  providerName: string
+): T => {
+  let data: unknown;
+
+  if (isPrimitive) {
+    // Try raw string first for primitive schemas
+    const trimmed = typeof rawContent === "string" ? rawContent.trim() : rawContent;
+    if (schema.safeParse(trimmed).success) {
+      data = trimmed;
+    } else {
+      // Fall back to parsing and unwrapping
+      const parsed = typeof rawContent === "string" ? safeJsonParse(rawContent) : rawContent;
+      data = unwrapLLMResponse(parsed, schema);
+    }
+  } else {
+    const parsed = typeof rawContent === "string" ? safeJsonParse(rawContent) : rawContent;
+    data = unwrapLLMResponse(parsed, schema);
+  }
+
+  if (data === undefined) {
+    throw new AIError(`${providerName} returned no data`, "provider_error");
+  }
+
+  const validated = schema.safeParse(data);
+  if (!validated.success) {
+    throw new AIError(`${providerName} returned invalid schema`, "validation_error", validated.error);
+  }
+
+  return validated.data as T;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STREAMING HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Safely parse JSON with fallback for malformed responses.
+ * Attempts to extract JSON objects even when surrounded by extra text.
+ */
+export const safeJsonParse = (content: string): unknown => {
+  try {
+    return JSON.parse(content);
+  } catch {
+    // Try to extract JSON object from potentially malformed response
+    const jsonMatch = content.match(/^\s*(\{[\s\S]*\})\s*(?:\n|$)/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[1]);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+};
+
+/**
+ * Parse and validate LLM stream response.
+ * Handles unwrapping, undefined checks, and schema validation.
+ * Delegates to parseAndValidateResponse for consistent behavior.
+ * 
+ * @param rawText - The raw text from the LLM stream
+ * @param schema - Zod schema to validate against
+ * @param providerName - Provider name for error messages
+ * @returns Validated data
+ * @throws {AIError} If parsing fails or validation fails
+ */
+export const parseAndValidateStreamResponse = <T>(
+  rawText: string,
+  schema: AnyZodSchema,
+  providerName: string
+): T => {
+  const isPrimitive = isPrimitiveSchema(schema);
+  return parseAndValidateResponse<T>(rawText, schema, isPrimitive, `${providerName} stream`);
 };
 

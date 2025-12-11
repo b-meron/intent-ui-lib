@@ -7,13 +7,15 @@ import {
   contentModerationSchema,
   dataExtractionSchema,
   apiRequestSchema,
+  streamingResponseSchema,
   ErrorSummary,
   FeedbackAnalysis,
   ContentModeration,
   DataExtraction,
-  ApiRequest
+  ApiRequest,
+  StreamingResponse
 } from "./schemas";
-import { ErrorResult, FeedbackResult, ModerationResult, ExtractionResult, ApiResult } from "./components/results";
+import { ErrorResult, FeedbackResult, ModerationResult, ExtractionResult, ApiResult, StreamingResult } from "./components/results";
 
 export interface ScenarioConfig<T = unknown> {
   schema: AnyZodSchema;
@@ -22,6 +24,8 @@ export interface ScenarioConfig<T = unknown> {
   resultText: string;
   ResultComponent: React.ComponentType<{ data: T }>;
   buildInput: (submittedInput: string, submittedError: unknown, runKey: number) => unknown;
+  /** If true, this scenario uses streaming (useAIStream) instead of useAI */
+  isStreaming?: boolean;
 }
 
 // Type-safe scenario configurations
@@ -94,6 +98,20 @@ export const scenarioConfigs: Record<ScenarioId, ScenarioConfig> = {
     resultText: "Generated API Request",
     ResultComponent: ApiResult as React.ComponentType<{ data: unknown }>,
     buildInput: (submittedInput, _, runKey) => ({ request: submittedInput, _run: runKey }),
+  },
+  
+  streaming: {
+    schema: streamingResponseSchema,
+    fallback: {
+      content: "Unable to generate response - streaming unavailable",
+      wordCount: 0,
+      mood: "thoughtful"
+    } as StreamingResponse,
+    loadingText: "Streaming...",
+    resultText: "Streamed Response",
+    ResultComponent: StreamingResult as React.ComponentType<{ data: unknown }>,
+    buildInput: (submittedInput, _, runKey) => ({ prompt: submittedInput, _run: runKey }),
+    isStreaming: true, // Special flag for streaming scenarios
   },
 };
 

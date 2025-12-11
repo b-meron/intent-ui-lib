@@ -1,6 +1,13 @@
 import { AIExecutionResult, AIProvider, ProviderExecuteArgs, AIError } from "../core/types";
-import { deriveCost, estimateUSD } from "../core/cost";
-import { stableStringify, zodToJsonExample, isPrimitiveSchema, getPrimitiveTypeName, unwrapLLMResponse } from "../core/utils";
+import { resolveCost, estimateUSD } from "../core/cost";
+import {
+  zodToJsonExample,
+  isPrimitiveSchema,
+  getPrimitiveTypeName,
+  buildSystemPrompt,
+  buildUserContent,
+  parseAndValidateResponse
+} from "../core/utils";
 
 export interface LocalProviderConfig {
   endpoint?: string;
@@ -11,23 +18,6 @@ export interface LocalProviderConfig {
 
 const DEFAULT_ENDPOINT = "http://localhost:11434/v1/chat/completions";
 const DEFAULT_MODEL = "llama3";
-
-const safeJsonParse = (value: string): unknown => {
-  try {
-    return JSON.parse(value);
-  } catch {
-    // Try to extract JSON from text that might have extra content after it
-    const jsonMatch = value.match(/^\s*(\{[\s\S]*\})\s*(?:\n|$)/);
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[1]);
-      } catch {
-        return undefined;
-      }
-    }
-    return undefined;
-  }
-};
 
 const resolveFetch = () => {
   if (typeof fetch === "function") return fetch;
@@ -42,7 +32,7 @@ class LocalProviderImpl implements AIProvider {
     this.config = config;
   }
 
-  async execute<T>({ prompt, input, schema, temperature, signal }: ProviderExecuteArgs): Promise<AIExecutionResult<T>> {
+  async execute<T>({ prompt, input, schema, temperature, maxTokens, providerOptions, signal }: ProviderExecuteArgs): Promise<AIExecutionResult<T>> {
     const fetcher = resolveFetch();
     const endpoint = this.config.endpoint ?? DEFAULT_ENDPOINT;
     const model = this.config.model ?? DEFAULT_MODEL;
@@ -52,36 +42,9 @@ class LocalProviderImpl implements AIProvider {
     const isPrimitive = isPrimitiveSchema(schema);
     const primitiveType = getPrimitiveTypeName(schema);
 
-    const systemPrompt = isPrimitive
-      ? [
-        "You are a deterministic function.",
-        "Output ONLY the raw value requested. No JSON wrapping.",
-        "For strings: output just the text, no quotes.",
-        "For numbers: output just the number.",
-        "For booleans: output just true or false.",
-        "DO NOT wrap in objects like {\"data\": ...} or {\"result\": ...}.",
-        "DO NOT add notes, explanations, or any extra text.",
-      ].join(" ")
-      : [
-        "You are a deterministic JSON-only function.",
-        "Output ONLY the JSON object. No text before or after.",
-        "Use lowercase for enum values (e.g., 'positive' not 'POSITIVE').",
-        "DO NOT add notes, explanations, or any text outside the JSON.",
-        "If you add anything other than JSON, the system will fail."
-      ].join(" ");
-
-    const userContent = isPrimitive
-      ? [
-        `Task: ${prompt}`,
-        input ? `Context: ${stableStringify(input)}` : null,
-        `Return ONLY a ${primitiveType} value. No JSON, no wrapping, just the raw value.`
-      ].filter(Boolean).join("\n")
-      : [
-        `Task: ${prompt}`,
-        input ? `Context: ${stableStringify(input)}` : null,
-        `Required JSON format: ${schemaExample}`,
-        "Return ONLY the JSON object matching this format."
-      ].filter(Boolean).join("\n");
+    // Use shared prompt builders for consistency
+    const systemPrompt = buildSystemPrompt(isPrimitive);
+    const userContent = buildUserContent(prompt, input, schemaExample, isPrimitive, primitiveType);
 
     const response = await fetcher(endpoint, {
       method: "POST",
@@ -97,7 +60,10 @@ class LocalProviderImpl implements AIProvider {
           { role: "user", content: userContent }
         ],
         temperature: temperature ?? 0,
-        stream: false
+        ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+        stream: false,
+        // Spread any additional provider-specific options
+        ...providerOptions,
       }),
       signal
     });
@@ -112,34 +78,19 @@ class LocalProviderImpl implements AIProvider {
       ? messageContent.map((c: unknown) => (typeof c === "string" ? c : (c as { text?: string })?.text ?? "")).join("")
       : messageContent;
 
-    // For primitives, try to use raw content first
-    let data: unknown;
-    if (isPrimitive) {
-      const trimmed = typeof rawContent === "string" ? rawContent.trim() : rawContent;
-      if (schema.safeParse(trimmed).success) {
-        data = trimmed;
-      } else {
-        // Fall back to parsing and unwrapping
-        const parsed = typeof rawContent === "string" ? safeJsonParse(rawContent) : rawContent;
-        data = unwrapLLMResponse(parsed, schema);
-      }
-    } else {
-      const parsed = typeof rawContent === "string" ? safeJsonParse(rawContent) : rawContent;
-      data = unwrapLLMResponse(parsed, schema);
-    }
-
-    const validated = schema.safeParse(data);
-    if (!validated.success) {
-      throw new AIError("Local provider returned invalid schema", "validation_error", validated.error);
-    }
+    // Use shared response parser for consistency
+    const validatedData = parseAndValidateResponse<T>(rawContent, schema, isPrimitive, "Local provider");
 
     const usageTokens = payload?.usage?.total_tokens;
-    const fallbackCost = deriveCost(prompt, input);
+    const estimatedUSD = usageTokens !== undefined ? estimateUSD(usageTokens) : undefined;
+
+    // Use shared helper with explicit undefined checks (0 is valid)
+    const cost = resolveCost(usageTokens, estimatedUSD, prompt, input);
 
     return {
-      data: validated.data,
-      tokens: usageTokens ?? fallbackCost.tokens,
-      estimatedUSD: usageTokens ? estimateUSD(usageTokens) : fallbackCost.estimatedUSD
+      data: validatedData,
+      tokens: cost.tokens,
+      estimatedUSD: cost.estimatedUSD,
     };
   }
 }

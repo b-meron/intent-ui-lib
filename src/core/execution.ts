@@ -1,6 +1,6 @@
 import { AIError, AIExecutionResult, AIProvider, AnyZodSchema, CachePolicy } from "./types";
 import { buildCacheKey, getFromSessionCache, setSessionCache } from "./cache";
-import { deriveCost } from "./cost";
+import { resolveCost } from "./cost";
 import { mockProvider } from "../providers/mock";
 import { sanitizeInput, sanitizePrompt } from "./sanitize";
 
@@ -18,15 +18,19 @@ export const executeAI = async <T>(args: {
   schema: AnyZodSchema;
   provider?: AIProvider;
   temperature?: number;
+  maxTokens?: number;
   cache?: CachePolicy;
   timeoutMs?: number;
   retry?: number;
   fallback?: T | (() => T);
+  providerOptions?: Record<string, unknown>;
 }): Promise<AIExecutionResult<T>> => {
   const provider = selectProvider(args.provider);
   const prompt = sanitizePrompt(args.prompt);
   const input = sanitizeInput(args.input);
   const temperature = args.temperature ?? defaultTemperature;
+  const maxTokens = args.maxTokens;
+  const providerOptions = args.providerOptions;
   const timeoutMs = args.timeoutMs ?? defaultTimeout;
   const retry = args.retry ?? defaultRetry;
   const cachePolicy = args.cache ?? "session";
@@ -51,6 +55,8 @@ export const executeAI = async <T>(args: {
         input,
         schema: args.schema,
         temperature,
+        maxTokens,
+        providerOptions,
         signal: controller.signal
       });
 
@@ -59,9 +65,8 @@ export const executeAI = async <T>(args: {
         throw new AIError("Provider returned invalid shape", "validation_error", validated.error);
       }
 
-      const cost = result.tokens && result.estimatedUSD
-        ? { tokens: result.tokens, estimatedUSD: result.estimatedUSD }
-        : deriveCost(prompt, input);
+      // Use shared helper with explicit undefined checks (0 is valid)
+      const cost = resolveCost(result.tokens, result.estimatedUSD, prompt, input);
 
       const finalResult: AIExecutionResult<T> = {
         data: validated.data,

@@ -1,4 +1,4 @@
-export type ScenarioId = "error" | "feedback" | "moderation" | "extraction" | "api";
+export type ScenarioId = "error" | "feedback" | "moderation" | "extraction" | "api" | "streaming";
 
 export interface ErrorExample {
   id: string;
@@ -176,6 +176,14 @@ Sarah from Customer Success`,
     description: "Convert plain English requests into API endpoint suggestions",
     placeholder: `Get all premium users who signed up in the last 30 days and have made at least 2 purchases`,
     prompt: "Convert this natural language request into an API call. Suggest the HTTP method, endpoint path, query parameters, and briefly describe what it does."
+  },
+  streaming: {
+    id: "streaming",
+    title: "Streaming Demo",
+    icon: "⚡",
+    description: "Real-time streaming with live text updates",
+    placeholder: `Write a short poem about the beauty of coding at night`,
+    prompt: "Write a creative response to this prompt. Be expressive and detailed."
   }
 };
 

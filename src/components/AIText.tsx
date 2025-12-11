@@ -8,10 +8,14 @@ interface AITextProps<T> {
   schema: AnyZodSchema;
   provider?: AIProvider;
   temperature?: number;
+  /** Maximum tokens to generate */
+  maxTokens?: number;
   cache?: CachePolicy;
   timeoutMs?: number;
   retry?: number;
   fallback?: T | (() => T);
+  /** Additional provider-specific options */
+  providerOptions?: Record<string, unknown>;
   children: (
     data: T | undefined,
     meta: {
@@ -35,10 +39,12 @@ export function AIText<T>(props: AITextProps<T>) {
     schema: props.schema,
     provider: props.provider,
     temperature: props.temperature,
+    maxTokens: props.maxTokens,
     cache: props.cache,
     timeoutMs: props.timeoutMs,
     retry: props.retry,
-    fallback: props.fallback
+    fallback: props.fallback,
+    providerOptions: props.providerOptions,
   });
 
   return <>{props.children(result.data, {

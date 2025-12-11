@@ -40,6 +40,13 @@ const skeletonConfigs: Record<ScenarioId, React.ReactNode> = {
       <div className="h-20 bg-slate-800 rounded" />
     </div>
   ),
+  streaming: (
+    <div className="animate-pulse space-y-3">
+      <div className="h-4 bg-slate-800 rounded w-full" />
+      <div className="h-4 bg-slate-800 rounded w-5/6" />
+      <div className="h-4 bg-slate-800 rounded w-4/6" />
+    </div>
+  ),
 };
 
 interface AIResultPanelProps<T> {
