@@ -1,5 +1,5 @@
-import type { ApiRequest } from "../../scenarios";
-import { SectionLabel, InfoPanel } from "../ui";
+import type { ApiRequest } from "./types";
+import { SectionLabel, InfoPanel } from "../../components/ui";
 
 const methodColors: Record<string, string> = {
   GET: "bg-emerald-900/50 text-emerald-300",
@@ -38,3 +38,4 @@ export const ApiResult = ({ data }: { data: ApiRequest }) => (
     <InfoPanel label="Description">{data.description}</InfoPanel>
   </div>
 );
+

@@ -1,5 +1,5 @@
-import type { ContentModeration } from "../../scenarios";
-import { Badge, SectionLabel, InfoPanel } from "../ui";
+import type { ContentModeration } from "./types";
+import { Badge, SectionLabel, InfoPanel } from "../../components/ui";
 
 export const ModerationResult = ({ data }: { data: ContentModeration }) => (
   <div className="space-y-4">
@@ -32,3 +32,4 @@ export const ModerationResult = ({ data }: { data: ContentModeration }) => (
     <InfoPanel label="Reasoning">{data.reason}</InfoPanel>
   </div>
 );
+

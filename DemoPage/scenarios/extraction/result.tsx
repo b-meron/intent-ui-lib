@@ -1,5 +1,5 @@
-import type { DataExtraction } from "../../scenarios";
-import { Tag, BadgeColor, InfoBox } from "../ui";
+import type { DataExtraction } from "./types";
+import { Tag, BadgeColor, InfoBox } from "../../components/ui";
 
 const typeColors: Record<string, BadgeColor> = {
   date: "blue",
@@ -28,3 +28,4 @@ export const ExtractionResult = ({ data }: { data: DataExtraction }) => (
     <InfoBox label="Summary" borderColor="cyan">{data.summary}</InfoBox>
   </div>
 );
+

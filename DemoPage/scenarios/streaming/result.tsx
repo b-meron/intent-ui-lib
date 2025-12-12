@@ -1,4 +1,4 @@
-import { StreamingResponse } from "../../scenarios";
+import type { StreamingResponse } from "./types";
 
 const moodColors: Record<StreamingResponse["mood"], string> = {
   inspiring: "bg-amber-900/50 text-amber-300",

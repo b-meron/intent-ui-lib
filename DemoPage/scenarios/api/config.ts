@@ -1,7 +1,7 @@
 import type { ScenarioConfig } from "../types";
 import { apiRequestSchema } from "./schema";
 import type { ApiRequest } from "./types";
-import { ApiResult } from "../../components/results";
+import { ApiResult } from "./result";
 
 export const apiScenarioConfig: ScenarioConfig<ApiRequest> = {
   schema: apiRequestSchema,

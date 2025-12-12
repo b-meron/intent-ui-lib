@@ -1,7 +1,7 @@
 import type { ScenarioConfig } from "../types";
 import { contentModerationSchema } from "./schema";
 import type { ContentModeration } from "./types";
-import { ModerationResult } from "../../components/results";
+import { ModerationResult } from "./result";
 
 export const moderationScenarioConfig: ScenarioConfig<ContentModeration> = {
   schema: contentModerationSchema,

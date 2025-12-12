@@ -1,7 +1,7 @@
 import type { ScenarioConfig } from "../types";
 import { feedbackAnalysisSchema } from "./schema";
 import type { FeedbackAnalysis } from "./types";
-import { FeedbackResult } from "../../components/results";
+import { FeedbackResult } from "./result";
 
 export const feedbackScenarioConfig: ScenarioConfig<FeedbackAnalysis> = {
   schema: feedbackAnalysisSchema,

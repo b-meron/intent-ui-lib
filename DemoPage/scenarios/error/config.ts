@@ -1,7 +1,7 @@
 import type { ScenarioConfig } from "../types";
 import { errorSummarySchema } from "./schema";
 import type { ErrorSummary } from "./types";
-import { ErrorResult } from "../../components/results";
+import { ErrorResult } from "./result";
 
 export const errorScenarioConfig: ScenarioConfig<ErrorSummary> = {
     schema: errorSummarySchema,

@@ -1,7 +1,7 @@
 import type { ScenarioConfig } from "../types";
 import { dataExtractionSchema } from "./schema";
 import type { DataExtraction } from "./types";
-import { ExtractionResult } from "../../components/results";
+import { ExtractionResult } from "./result";
 
 export const extractionScenarioConfig: ScenarioConfig<DataExtraction> = {
   schema: dataExtractionSchema,

@@ -1,6 +1,5 @@
-import type { FeedbackAnalysis } from "../../scenarios";
-import { Badge, BadgeColor } from "../ui";
-import { InfoBox, SectionLabel } from "../ui";
+import type { FeedbackAnalysis } from "./types";
+import { Badge, BadgeColor, InfoBox, SectionLabel } from "../../components/ui";
 
 const sentimentColors: Record<FeedbackAnalysis["sentiment"], BadgeColor> = {
   positive: "emerald",
@@ -37,3 +36,4 @@ export const FeedbackResult = ({ data }: { data: FeedbackAnalysis }) => {
     </div>
   );
 };
+

@@ -1,5 +1,5 @@
-import type { ErrorSummary } from "../../scenarios";
-import { Badge, BadgeColor, InfoBox } from "../ui";
+import type { ErrorSummary } from "./types";
+import { Badge, BadgeColor, InfoBox } from "../../components/ui";
 
 const severityConfig: Record<ErrorSummary["severity"], { color: BadgeColor; icon: string; border: string }> = {
   info: { color: "info", icon: "ℹ️", border: "border-blue-400" },
@@ -38,3 +38,4 @@ export const ErrorResult = ({ data }: { data: ErrorSummary }) => {
     </div>
   );
 };
+

@@ -1,7 +1,7 @@
 import type { ScenarioConfig } from "../types";
 import { streamingResponseSchema } from "./schema";
 import type { StreamingResponse } from "./types";
-import { StreamingResult } from "../../components/results";
+import { StreamingResult } from "./result";
 
 export const streamingScenarioConfig: ScenarioConfig<StreamingResponse> = {
   schema: streamingResponseSchema,
