@@ -16,3 +16,5 @@ export interface Scenario {
   inputType?: "textarea" | "dropdown";
 }
 
+export type PlaygroundScenarioId = Exclude<ScenarioId, "streaming">;
+

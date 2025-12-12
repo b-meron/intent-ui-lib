@@ -9,7 +9,7 @@ import {
 } from "react-ai-query";
 import { GROQ_KEY_STORAGE, OPENAI_KEY_STORAGE } from "./constants";
 import { ProviderChoice } from "./types";
-import { SCENARIOS, ScenarioId, scenarioConfigs } from "./scenarios";
+import { SCENARIOS, ScenarioId, scenarioConfigs, type PlaygroundScenarioId } from "./scenarios";
 import {
   Header,
   Footer,
@@ -75,6 +75,9 @@ export default function DemoPage() {
     }
   }, [activeScenario, fallbackScenario, streamingProvider]);
 
+  const isStreamingScenario = activeScenario === "streaming";
+  const nonStreamingScenarioId = activeScenario as PlaygroundScenarioId;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
       <Header
@@ -116,7 +119,7 @@ export default function DemoPage() {
               })}
             </div>
             <div className="rounded-lg border border-slate-800 bg-slate-900/50 p-4">
-              {activeScenario === "streaming" ? (
+              {isStreamingScenario ? (
                 streamingProvider ? (
                   <StreamingPlayground provider={streamingProvider} />
                 ) : (
@@ -126,7 +129,7 @@ export default function DemoPage() {
                   </div>
                 )
               ) : (
-                <PlaygroundScenario scenarioId={activeScenario} provider={provider} />
+                <PlaygroundScenario scenarioId={nonStreamingScenarioId} provider={provider} />
               )}
             </div>
           </div>
