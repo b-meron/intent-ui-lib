@@ -39,7 +39,16 @@ export const executeAI = async <T>(args: {
     throw new AIError("Provider is required", "configuration");
   }
 
-  const cacheKey = cachePolicy ? buildCacheKey({ prompt, input, schema: args.schema }) : undefined;
+  const cacheKey = cachePolicy
+    ? buildCacheKey({
+      prompt,
+      input,
+      schema: args.schema,
+      temperature,
+      maxTokens,
+      providerOptions,
+    })
+    : undefined;
   if (cacheKey && cachePolicy === "session") {
     const cached = getFromSessionCache<T>(cacheKey);
     if (cached) return cached;
