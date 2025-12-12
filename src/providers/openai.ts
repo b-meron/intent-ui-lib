@@ -1,8 +1,17 @@
 import OpenAI from "openai";
-import { AIExecutionResult, AIProvider, ProviderExecuteArgs } from "../core/types";
-import { deriveCost, estimateUSD } from "../core/cost";
-import { AIError } from "../core/types";
-import { stableStringify, zodToJsonExample, unwrapLLMResponse } from "../core/utils";
+import { streamText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { AIExecutionResult, AIStreamProvider, ProviderExecuteArgs, StreamExecuteArgs } from "../core/types";
+import { resolveCost, estimateUSD } from "../core/cost";
+import {
+  zodToJsonExample,
+  isPrimitiveSchema,
+  getPrimitiveTypeName,
+  buildSystemPrompt,
+  buildUserContent,
+  parseAndValidateResponse,
+  parseAndValidateStreamResponse
+} from "../core/utils";
 
 export interface OpenAIProviderConfig {
   apiKey: string;
@@ -13,16 +22,9 @@ export interface OpenAIProviderConfig {
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 
-const safeJsonParse = (content: string): unknown => {
-  try {
-    return JSON.parse(content);
-  } catch {
-    return undefined;
-  }
-};
-
-class OpenAIProviderImpl implements AIProvider {
+class OpenAIProviderImpl implements AIStreamProvider {
   name = "openai";
+  supportsStreaming = true;
   private config: OpenAIProviderConfig;
   private client: OpenAI;
 
@@ -35,34 +37,28 @@ class OpenAIProviderImpl implements AIProvider {
     });
   }
 
-  async execute<T>({ prompt, input, schema, temperature, signal }: ProviderExecuteArgs): Promise<AIExecutionResult<T>> {
-
+  async execute<T>({ prompt, input, schema, temperature, maxTokens, providerOptions, signal }: ProviderExecuteArgs): Promise<AIExecutionResult<T>> {
     // Generate JSON example from Zod schema
     const schemaExample = zodToJsonExample(schema);
+    const isPrimitive = isPrimitiveSchema(schema);
+    const primitiveType = getPrimitiveTypeName(schema);
 
-    const systemPrompt = [
-      "You are a deterministic function for a React UI runtime.",
-      "Always respond with strict JSON object: { \"data\": <value> }.",
-      "The <value> must match the exact schema format provided.",
-      "Never include code, JSX, HTML, or explanations.",
-      "If uncertain, return a safe, minimal value within schema."
-    ].join(" ");
-
-    const userContent = [
-      `Task: ${prompt}`,
-      input ? `Context: ${stableStringify(input)}` : undefined,
-      `Required format for <value>: ${schemaExample}`,
-      "Return JSON: { \"data\": <your_response> }"
-    ].filter(Boolean).join("\n");
+    // Use shared prompt builders for consistency with streaming and other providers
+    const systemPrompt = buildSystemPrompt(isPrimitive);
+    const userContent = buildUserContent(prompt, input, schemaExample, isPrimitive, primitiveType);
 
     const completion = await this.client.chat.completions.create({
       model: this.config.model ?? DEFAULT_MODEL,
       temperature: temperature ?? 0,
+      ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userContent }
       ],
-      response_format: { type: "json_object" }
+      // Only use JSON mode for non-primitives (primitives return raw text)
+      ...(isPrimitive ? {} : { response_format: { type: "json_object" as const } }),
+      // Spread any additional provider-specific options
+      ...providerOptions,
     }, { signal });
 
     const messageContent = completion.choices[0]?.message?.content;
@@ -70,25 +66,87 @@ class OpenAIProviderImpl implements AIProvider {
       ? messageContent.map((c) => (typeof c === "string" ? c : c.text ?? "")).join("")
       : (messageContent ?? "");
 
-    const parsed = typeof content === "string" ? safeJsonParse(content) : undefined;
-    const data = unwrapLLMResponse(parsed, schema);
-
-    if (data === undefined) {
-      throw new AIError("OpenAI returned no data", "provider_error");
-    }
-
-    const validated = schema.safeParse(data);
-    if (!validated.success) {
-      throw new AIError("OpenAI returned invalid schema", "validation_error", validated.error);
-    }
+    // Use shared response parser for consistency
+    const validatedData = parseAndValidateResponse<T>(content, schema, isPrimitive, "OpenAI");
 
     const usageTokens = completion.usage?.total_tokens;
-    const estimated = deriveCost(prompt, input);
+    const estimatedUSD = usageTokens !== undefined ? estimateUSD(usageTokens) : undefined;
+
+    // Use shared helper with explicit undefined checks (0 is valid)
+    const cost = resolveCost(usageTokens, estimatedUSD, prompt, input);
 
     return {
-      data: validated.data,
-      tokens: usageTokens ?? estimated.tokens,
-      estimatedUSD: usageTokens ? estimateUSD(usageTokens) : estimated.estimatedUSD
+      data: validatedData,
+      tokens: cost.tokens,
+      estimatedUSD: cost.estimatedUSD,
+    };
+  }
+
+  /**
+   * Stream execution using Vercel AI SDK core primitives.
+   * Provides reliable SSE parsing with automatic provider format handling.
+   * Supports both primitive (raw value) and object (JSON) schemas.
+   */
+  async executeStream<T>({
+    prompt, input, schema, temperature, maxTokens, providerOptions, signal, onChunk
+  }: StreamExecuteArgs): Promise<AIExecutionResult<T>> {
+    const schemaExample = zodToJsonExample(schema);
+    const isPrimitive = isPrimitiveSchema(schema);
+    const primitiveType = getPrimitiveTypeName(schema);
+
+    // Use shared prompt builders for consistency
+    const systemPrompt = buildSystemPrompt(isPrimitive);
+    const userContent = buildUserContent(prompt, input, schemaExample, isPrimitive, primitiveType);
+
+    // Use Vercel AI SDK for streaming
+    const openai = createOpenAI({
+      apiKey: this.config.apiKey,
+      baseURL: this.config.baseURL,
+    });
+
+    const result = await streamText({
+      model: openai(this.config.model ?? DEFAULT_MODEL),
+      temperature: temperature ?? 0,
+      ...(maxTokens !== undefined ? { maxTokens } : {}),
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userContent }
+      ],
+      abortSignal: signal,
+      // Spread any additional provider-specific options
+      ...providerOptions,
+    });
+
+    let fullText = "";
+
+    // Stream chunks to callback
+    for await (const chunk of result.textStream) {
+      fullText += chunk;
+      onChunk({
+        text: fullText,
+        delta: chunk,
+        done: false,
+      });
+    }
+
+    // Final chunk
+    onChunk({ text: fullText, delta: "", done: true });
+
+    // Parse and validate final result using shared helper (handles primitives)
+    const validatedData = parseAndValidateStreamResponse<T>(fullText, schema, "OpenAI");
+
+    // Get usage from result (await finishes the stream)
+    const usage = await result.usage;
+    const totalTokens = usage?.totalTokens;
+    const estimatedUSD = totalTokens !== undefined ? estimateUSD(totalTokens) : undefined;
+
+    // Use shared helper with explicit undefined checks (0 is valid)
+    const cost = resolveCost(totalTokens, estimatedUSD, prompt, input);
+
+    return {
+      data: validatedData,
+      tokens: cost.tokens,
+      estimatedUSD: cost.estimatedUSD,
     };
   }
 }

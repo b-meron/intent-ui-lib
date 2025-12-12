@@ -17,3 +17,26 @@ export const deriveCost = (prompt: string, input?: unknown): { tokens: number; e
   const tokens = estimateTokens(prompt, input);
   return { tokens, estimatedUSD: estimateUSD(tokens) };
 };
+
+/**
+ * Resolve cost from provider result or fall back to estimation.
+ * Uses explicit undefined checks to handle 0 as a valid token count.
+ * 
+ * @param resultTokens - Token count from provider (may be undefined)
+ * @param resultUSD - USD cost from provider (may be undefined)
+ * @param prompt - Original prompt for fallback estimation
+ * @param input - Original input for fallback estimation
+ * @returns Resolved cost breakdown
+ */
+export const resolveCost = (
+  resultTokens: number | undefined,
+  resultUSD: number | undefined,
+  prompt: string,
+  input?: unknown
+): { tokens: number; estimatedUSD: number } => {
+  // Use explicit undefined checks - 0 is a valid value
+  if (resultTokens !== undefined && resultUSD !== undefined) {
+    return { tokens: resultTokens, estimatedUSD: resultUSD };
+  }
+  return deriveCost(prompt, input);
+};

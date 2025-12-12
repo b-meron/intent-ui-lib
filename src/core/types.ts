@@ -1,78 +1,9 @@
-import { ZodType } from "zod";
+/**
+ * @fileoverview Re-exports all types from the types directory.
+ * This file maintains backwards compatibility with existing imports.
+ * 
+ * @deprecated Import from "react-ai-query" directly instead.
+ * @module react-ai-query/core/types
+ */
 
-// Completely decoupled schema type to avoid TypeScript depth errors
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AnyZodSchema = ZodType<any, any, any>;
-
-export interface AIExecutionResult<T> {
-  data: T;
-  tokens: number;
-  estimatedUSD: number;
-  fromCache?: boolean;
-  usedFallback?: boolean;
-  fallbackReason?: string;
-}
-
-export interface ProviderExecuteArgs {
-  prompt: string;
-  input?: unknown;
-  schema: AnyZodSchema;
-  temperature: number;
-  signal?: AbortSignal;
-}
-
-export interface AIProvider {
-  name: string;
-  execute<T>(args: ProviderExecuteArgs): Promise<AIExecutionResult<T>>;
-}
-
-export interface CostBreakdown {
-  tokens: number;
-  estimatedUSD: number;
-}
-
-export interface UseAIOptions<T> {
-  prompt: string;
-  input?: unknown;
-  schema: AnyZodSchema;
-  provider?: AIProvider;
-  temperature?: number;
-  cache?: "session" | false;
-  timeoutMs?: number;
-  retry?: number;
-  fallback?: T | (() => T);
-}
-
-export interface UseAIResult<T> {
-  data: T | undefined;
-  loading: boolean;
-  error: AIError | undefined;
-  cost?: CostBreakdown;
-  tokens?: number;
-  estimatedUSD?: number;
-  fromCache?: boolean;
-  usedFallback?: boolean;
-  fallbackReason?: string;
-  refresh: () => Promise<void>;
-}
-
-export type CachePolicy = "session" | false;
-
-export type ErrorCode =
-  | "validation_error"
-  | "provider_error"
-  | "timeout"
-  | "fallback"
-  | "configuration";
-
-export class AIError extends Error {
-  code: ErrorCode;
-  cause?: unknown;
-
-  constructor(message: string, code: ErrorCode, cause?: unknown) {
-    super(message);
-    this.name = "AIError";
-    this.code = code;
-    this.cause = cause;
-  }
-}
+export * from "./types/index";

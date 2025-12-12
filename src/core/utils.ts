@@ -1,5 +1,62 @@
 import { z } from "zod";
-import { AnyZodSchema } from "./types";
+import { AIError, AnyZodSchema } from "./types";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ABORT SIGNAL HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Combine multiple AbortSignals into one that aborts when ANY signal aborts.
+ * Uses native AbortSignal.any() when available (Node 20.3+, modern browsers),
+ * falls back to a manual implementation for older environments (Node 18).
+ * 
+ * TODO: Remove fallback when Node.js 18 support is dropped (EOL April 2025)
+ * Just use: return AbortSignal.any(signals);
+ * 
+ * @param signals - Array of AbortSignals to combine
+ * @returns A single AbortSignal that aborts when any input signal aborts
+ */
+export const combineAbortSignals = (signals: AbortSignal[]): AbortSignal => {
+  // Use native implementation when available (best performance)
+  if (typeof AbortSignal.any === "function") {
+    return AbortSignal.any(signals);
+  }
+
+  // Fallback for Node.js 18 and older browsers
+  const controller = new AbortController();
+
+  // Track handlers for cleanup
+  const handlers: Array<{ signal: AbortSignal; handler: () => void }> = [];
+
+  const cleanup = () => {
+    for (const { signal, handler } of handlers) {
+      signal.removeEventListener("abort", handler);
+    }
+    handlers.length = 0;
+  };
+
+  for (const signal of signals) {
+    // If any signal is already aborted, abort immediately
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      return controller.signal;
+    }
+
+    // Listen for future aborts
+    const handler = () => {
+      cleanup(); // Remove all listeners when any signal aborts
+      controller.abort(signal.reason);
+    };
+    handlers.push({ signal, handler });
+    signal.addEventListener("abort", handler, { once: true });
+  }
+
+  return controller.signal;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SCHEMA HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Check if a Zod schema expects a primitive type (string, number, boolean).
@@ -154,8 +211,8 @@ const buildExample = (def: ZodDef): unknown => {
     case "ZodLiteral":
       return def.value;
     case "ZodEnum":
-      // Show all enum options: "positive" | "neutral" | "negative"
-      return def.values?.join(" | ") ?? "enum";
+      // Show all options with | separator - system prompt tells model to pick ONE
+      return def.values?.join("|") ?? "enum";
     case "ZodNativeEnum":
       return "enum_value";
     case "ZodArray":
@@ -204,5 +261,339 @@ const buildExample = (def: ZodDef): unknown => {
     default:
       return `<${typeName}>`;
   }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROMPT BUILDING HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Build system prompt for AI provider.
+ * Handles both primitive (raw value) and object (JSON) schemas.
+ * 
+ * @param isPrimitive - Whether the schema expects a primitive type
+ * @returns System prompt string
+ */
+export const buildSystemPrompt = (isPrimitive: boolean): string => {
+  return isPrimitive
+    ? [
+      "You are a deterministic function.",
+      "Output ONLY the raw value requested. No JSON wrapping.",
+      "For strings: output just the text, no quotes.",
+      "For numbers: output just the number.",
+      "For booleans: output just true or false.",
+      "DO NOT wrap in objects like {\"data\": ...} or {\"result\": ...}.",
+      "DO NOT add notes, explanations, or any extra text.",
+    ].join(" ")
+    : [
+      "You are a deterministic JSON-only function.",
+      "Output ONLY valid, complete JSON. No text before or after.",
+      "CRITICAL: You MUST output ALL fields in the schema. Never leave JSON incomplete.",
+      "Keep string content brief and concise - do not exceed 200 words per field.",
+      "For enum fields shown as 'a|b|c', pick exactly ONE value (e.g., output 'a' not 'a|b|c').",
+      "Use lowercase for enum values.",
+      "DO NOT add notes, explanations, or any text outside the JSON.",
+    ].join(" ");
+};
+
+/**
+ * Build user content for AI provider.
+ * Handles both primitive (raw value) and object (JSON) schemas.
+ * 
+ * @param prompt - The task/instruction
+ * @param input - Optional context data
+ * @param schemaExample - JSON example of expected format
+ * @param isPrimitive - Whether the schema expects a primitive type
+ * @param primitiveType - The primitive type name (string/number/boolean)
+ * @returns User content string
+ */
+export const buildUserContent = (
+  prompt: string,
+  input: unknown | undefined,
+  schemaExample: string,
+  isPrimitive: boolean,
+  primitiveType: string | null
+): string => {
+  // User content provides: Task, Context, and Schema format
+  // System prompt already handles: JSON rules, completion requirements, formatting
+  // NO DUPLICATION - user content is just the request, not rules
+  return isPrimitive
+    ? [
+      prompt,
+      input ? `\nInput: ${stableStringify(input)}` : null,
+    ].filter(Boolean).join("")
+    : [
+      prompt,
+      input ? `\nInput: ${stableStringify(input)}` : null,
+      `\nOutput format: ${schemaExample}`,
+    ].filter(Boolean).join("");
+};
+
+/**
+ * Parse raw LLM response content and validate against schema.
+ * Handles both primitive (raw value) and object (JSON) responses.
+ * 
+ * @param rawContent - The raw response content from the LLM
+ * @param schema - Zod schema to validate against
+ * @param isPrimitive - Whether the schema expects a primitive type
+ * @param providerName - Provider name for error messages
+ * @returns Validated data
+ * @throws {AIError} If parsing fails or validation fails
+ */
+export const parseAndValidateResponse = <T>(
+  rawContent: unknown,
+  schema: AnyZodSchema,
+  isPrimitive: boolean,
+  providerName: string
+): T => {
+  let data: unknown;
+
+  if (isPrimitive) {
+    // Try raw string first for primitive schemas
+    const trimmed = typeof rawContent === "string" ? rawContent.trim() : rawContent;
+    if (schema.safeParse(trimmed).success) {
+      data = trimmed;
+    } else {
+      // Fall back to parsing and unwrapping
+      const parsed = typeof rawContent === "string" ? safeJsonParse(rawContent) : rawContent;
+      data = unwrapLLMResponse(parsed, schema);
+    }
+  } else {
+    const parsed = typeof rawContent === "string" ? safeJsonParse(rawContent) : rawContent;
+    data = unwrapLLMResponse(parsed, schema);
+  }
+
+  if (data === undefined) {
+    throw new AIError(`${providerName} returned no data`, "provider_error");
+  }
+
+  const validated = schema.safeParse(data);
+  if (!validated.success) {
+    throw new AIError(`${providerName} returned invalid schema`, "validation_error", validated.error);
+  }
+
+  return validated.data as T;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STREAMING HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Safely parse JSON with fallback for malformed responses.
+ * Attempts to extract JSON objects even when surrounded by extra text.
+ * Also handles LLM quirks:
+ * - Literal newlines inside JSON strings (should be escaped as \n)
+ * - Truncated JSON from hitting token limits (attempts repair)
+ */
+export const safeJsonParse = (content: string): unknown => {
+  // Fix literal newlines/tabs inside JSON string values
+  const fixLiteralNewlinesInStrings = (json: string): string => {
+    let result = "";
+    let inString = false;
+    let escape = false;
+
+    for (let i = 0; i < json.length; i++) {
+      const char = json[i];
+
+      if (escape) {
+        result += char;
+        escape = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        result += char;
+        escape = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+        result += char;
+        continue;
+      }
+
+      if (inString) {
+        if (char === "\n") {
+          result += "\\n";
+        } else if (char === "\r") {
+          result += "\\r";
+        } else if (char === "\t") {
+          result += "\\t";
+        } else {
+          result += char;
+        }
+      } else {
+        result += char;
+      }
+    }
+
+    return result;
+  };
+
+  /**
+   * Attempt to repair truncated JSON from LLM hitting token limits.
+   * This handles cases where the LLM output is cut off mid-JSON.
+   * Strategy: Close any open strings and objects to make valid JSON.
+   */
+  const repairTruncatedJson = (json: string): string | null => {
+    const trimmed = json.trim();
+    if (!trimmed.startsWith("{")) return null;
+    if (trimmed.endsWith("}")) return trimmed; // Already complete
+
+    let repaired = trimmed;
+    let inString = false;
+    let escape = false;
+    let braceDepth = 0;
+    let bracketDepth = 0;
+
+    // Analyze the JSON structure
+    for (let i = 0; i < repaired.length; i++) {
+      const char = repaired[i];
+
+      if (escape) {
+        escape = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        escape = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (!inString) {
+        if (char === "{") braceDepth++;
+        else if (char === "}") braceDepth--;
+        else if (char === "[") bracketDepth++;
+        else if (char === "]") bracketDepth--;
+      }
+    }
+
+    // Close open strings
+    if (inString) {
+      repaired += '"';
+    }
+
+    // Close open brackets
+    while (bracketDepth > 0) {
+      repaired += "]";
+      bracketDepth--;
+    }
+
+    // Close open braces
+    while (braceDepth > 0) {
+      repaired += "}";
+      braceDepth--;
+    }
+
+    return repaired;
+  };
+
+  const tryParse = (json: string): unknown => {
+    try {
+      return JSON.parse(json);
+    } catch {
+      return undefined;
+    }
+  };
+
+  /**
+   * Find the end of a JSON object by matching braces.
+   * Returns the index after the closing brace, or -1 if not found.
+   */
+  const findJsonEnd = (str: string, startIndex: number): number => {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = startIndex; i < str.length; i++) {
+      const char = str[i];
+
+      if (escape) {
+        escape = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        escape = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (!inString) {
+        if (char === "{") depth++;
+        else if (char === "}") {
+          depth--;
+          if (depth === 0) return i + 1;
+        }
+      }
+    }
+
+    return -1; // No matching close brace found
+  };
+
+  // Attempt 1: Direct parse
+  let result = tryParse(content);
+  if (result !== undefined) return result;
+
+  // Attempt 2: Fix literal newlines then parse
+  const fixed = fixLiteralNewlinesInStrings(content);
+  result = tryParse(fixed);
+  if (result !== undefined) return result;
+
+  // Find where JSON starts in the cleaned-up string so positions align after escaping literals
+  const jsonStart = fixed.search(/\{/);
+  if (jsonStart === -1) return undefined;
+
+  // Attempt 3: Extract complete JSON object (handles trailing text)
+  const jsonEnd = findJsonEnd(fixed, jsonStart);
+  if (jsonEnd !== -1) {
+    const extracted = fixed.slice(jsonStart, jsonEnd);
+    result = tryParse(extracted);
+    if (result !== undefined) return result;
+  }
+
+  // Attempt 4: Try to repair truncated JSON (no closing brace found)
+  const truncatedJson = fixed.slice(jsonStart);
+  const repaired = repairTruncatedJson(truncatedJson);
+  if (repaired) {
+    result = tryParse(repaired);
+    if (result !== undefined) {
+      console.warn("[safeJsonParse] Repaired truncated JSON");
+      return result;
+    }
+  }
+
+  return undefined;
+};
+
+/**
+ * Parse and validate LLM stream response.
+ * Handles unwrapping, undefined checks, and schema validation.
+ * Delegates to parseAndValidateResponse for consistent behavior.
+ * 
+ * @param rawText - The raw text from the LLM stream
+ * @param schema - Zod schema to validate against
+ * @param providerName - Provider name for error messages
+ * @returns Validated data
+ * @throws {AIError} If parsing fails or validation fails
+ */
+export const parseAndValidateStreamResponse = <T>(
+  rawText: string,
+  schema: AnyZodSchema,
+  providerName: string
+): T => {
+  const isPrimitive = isPrimitiveSchema(schema);
+  return parseAndValidateResponse<T>(rawText, schema, isPrimitive, `${providerName} stream`);
 };
 

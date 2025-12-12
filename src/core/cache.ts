@@ -11,6 +11,9 @@ export const buildCacheKey = (args: {
   prompt: string;
   input?: unknown;
   schema: AnyZodSchema;
+  temperature?: number;
+  maxTokens?: number;
+  providerOptions?: Record<string, unknown>;
 }): string => {
   const schemaId = (args.schema as unknown as { description?: string; _def?: { typeName?: string } }).description ||
     (args.schema as unknown as { _def?: { typeName?: string } })._def?.typeName ||
@@ -19,7 +22,10 @@ export const buildCacheKey = (args: {
   return [
     args.prompt.trim(),
     stableStringify(args.input),
-    schemaId
+    schemaId,
+    args.temperature ?? "",
+    args.maxTokens ?? "",
+    stableStringify(args.providerOptions)
   ].join("::");
 };
 

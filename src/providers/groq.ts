@@ -1,6 +1,16 @@
-import { AIExecutionResult, AIProvider, ProviderExecuteArgs, AIError } from "../core/types";
-import { deriveCost, estimateUSD } from "../core/cost";
-import { stableStringify, zodToJsonExample, isPrimitiveSchema, getPrimitiveTypeName, unwrapLLMResponse } from "../core/utils";
+import { streamText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { AIExecutionResult, AIStreamProvider, ProviderExecuteArgs, StreamExecuteArgs, AIError } from "../core/types";
+import { resolveCost, estimateUSD } from "../core/cost";
+import {
+    zodToJsonExample,
+    isPrimitiveSchema,
+    getPrimitiveTypeName,
+    buildSystemPrompt,
+    buildUserContent,
+    parseAndValidateResponse,
+    parseAndValidateStreamResponse
+} from "../core/utils";
 
 export interface GroqProviderConfig {
     apiKey: string;
@@ -10,31 +20,16 @@ export interface GroqProviderConfig {
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 const DEFAULT_MODEL = "llama-3.1-8b-instant"; // Free, fast model
 
-const safeJsonParse = (value: string): unknown => {
-    try {
-        return JSON.parse(value);
-    } catch {
-        const jsonMatch = value.match(/^\s*(\{[\s\S]*\})\s*(?:\n|$)/);
-        if (jsonMatch) {
-            try {
-                return JSON.parse(jsonMatch[1]);
-            } catch {
-                return undefined;
-            }
-        }
-        return undefined;
-    }
-};
-
-class GroqProviderImpl implements AIProvider {
+class GroqProviderImpl implements AIStreamProvider {
     name = "groq";
+    supportsStreaming = true;
     private config: GroqProviderConfig;
 
     constructor(config: GroqProviderConfig) {
         this.config = config;
     }
 
-    async execute<T>({ prompt, input, schema, temperature, signal }: ProviderExecuteArgs): Promise<AIExecutionResult<T>> {
+    async execute<T>({ prompt, input, schema, temperature, maxTokens, providerOptions, signal }: ProviderExecuteArgs): Promise<AIExecutionResult<T>> {
         const apiKey = this.config.apiKey;
         if (!apiKey) {
             throw new AIError("Groq API key is required. Get a free key at console.groq.com", "configuration");
@@ -45,35 +40,9 @@ class GroqProviderImpl implements AIProvider {
         const isPrimitive = isPrimitiveSchema(schema);
         const primitiveType = getPrimitiveTypeName(schema);
 
-        const systemPrompt = isPrimitive
-            ? [
-                "You are a deterministic function.",
-                "Output ONLY the raw value requested. No JSON wrapping.",
-                "For strings: output just the text, no quotes.",
-                "For numbers: output just the number.",
-                "For booleans: output just true or false.",
-                "DO NOT wrap in objects like {\"data\": ...} or {\"result\": ...}.",
-                "DO NOT add notes, explanations, or any extra text.",
-            ].join(" ")
-            : [
-                "You are a deterministic JSON-only function.",
-                "Output ONLY the JSON object. No text before or after.",
-                "Use lowercase for enum values.",
-                "DO NOT add notes, explanations, or any text outside the JSON.",
-            ].join(" ");
-
-        const userContent = isPrimitive
-            ? [
-                `Task: ${prompt}`,
-                input ? `Context: ${stableStringify(input)}` : null,
-                `Return ONLY a ${primitiveType} value. No JSON, no wrapping, just the raw value.`
-            ].filter(Boolean).join("\n")
-            : [
-                `Task: ${prompt}`,
-                input ? `Context: ${stableStringify(input)}` : null,
-                `Required JSON format: ${schemaExample}`,
-                "Return ONLY the JSON object matching this format."
-            ].filter(Boolean).join("\n");
+        // Use shared prompt builders for consistency
+        const systemPrompt = buildSystemPrompt(isPrimitive);
+        const userContent = buildUserContent(prompt, input, schemaExample, isPrimitive, primitiveType);
 
         const response = await fetch(GROQ_ENDPOINT, {
             method: "POST",
@@ -88,7 +57,10 @@ class GroqProviderImpl implements AIProvider {
                     { role: "user", content: userContent }
                 ],
                 temperature: temperature ?? 0,
-                stream: false
+                ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
+                stream: false,
+                // Spread any additional provider-specific options
+                ...providerOptions,
             }),
             signal
         });
@@ -101,35 +73,92 @@ class GroqProviderImpl implements AIProvider {
         const payload = await response.json();
         const messageContent = payload?.choices?.[0]?.message?.content;
 
-        // For primitives, try to use raw content first
-        let data: unknown;
-        if (isPrimitive) {
-            // Try raw string first for string schemas
-            const trimmed = typeof messageContent === "string" ? messageContent.trim() : messageContent;
-            if (schema.safeParse(trimmed).success) {
-                data = trimmed;
-            } else {
-                // Fall back to parsing and unwrapping
-                const parsed = typeof messageContent === "string" ? safeJsonParse(messageContent) : messageContent;
-                data = unwrapLLMResponse(parsed, schema);
-            }
-        } else {
-            const parsed = typeof messageContent === "string" ? safeJsonParse(messageContent) : messageContent;
-            data = unwrapLLMResponse(parsed, schema);
-        }
-
-        const validated = schema.safeParse(data);
-        if (!validated.success) {
-            throw new AIError("Groq returned invalid schema", "validation_error", validated.error);
-        }
+        // Use shared response parser for consistency
+        const validatedData = parseAndValidateResponse<T>(messageContent, schema, isPrimitive, "Groq");
 
         const usageTokens = payload?.usage?.total_tokens;
-        const fallbackCost = deriveCost(prompt, input);
+        const estimatedUSD = usageTokens !== undefined ? estimateUSD(usageTokens) : undefined;
+
+        // Use shared helper with explicit undefined checks (0 is valid)
+        const cost = resolveCost(usageTokens, estimatedUSD, prompt, input);
 
         return {
-            data: validated.data,
-            tokens: usageTokens ?? fallbackCost.tokens,
-            estimatedUSD: usageTokens ? estimateUSD(usageTokens) : fallbackCost.estimatedUSD
+            data: validatedData,
+            tokens: cost.tokens,
+            estimatedUSD: cost.estimatedUSD,
+        };
+    }
+
+    /**
+     * Stream execution using Vercel AI SDK core primitives.
+     * Groq uses OpenAI-compatible API, so we use @ai-sdk/openai with baseURL.
+     * Supports both primitive (raw value) and object (JSON) schemas.
+     */
+    async executeStream<T>({
+        prompt, input, schema, temperature, maxTokens, providerOptions, signal, onChunk
+    }: StreamExecuteArgs): Promise<AIExecutionResult<T>> {
+        const apiKey = this.config.apiKey;
+        if (!apiKey) {
+            throw new AIError("Groq API key is required", "configuration");
+        }
+
+        const schemaExample = zodToJsonExample(schema);
+        const isPrimitive = isPrimitiveSchema(schema);
+        const primitiveType = getPrimitiveTypeName(schema);
+
+        // Use shared prompt builders for consistency with execute()
+        const systemPrompt = buildSystemPrompt(isPrimitive);
+        const userContent = buildUserContent(prompt, input, schemaExample, isPrimitive, primitiveType);
+
+        // Use Vercel AI SDK with Groq's OpenAI-compatible endpoint
+        const groq = createOpenAI({
+            apiKey,
+            baseURL: "https://api.groq.com/openai/v1",
+        });
+
+        const result = await streamText({
+            model: groq(this.config.model ?? DEFAULT_MODEL),
+            temperature: temperature ?? 0,
+            ...(maxTokens !== undefined ? { maxTokens } : {}),
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userContent }
+            ],
+            abortSignal: signal,
+            // Spread any additional provider-specific options
+            ...providerOptions,
+        });
+
+        let fullText = "";
+
+        // Stream chunks to callback
+        for await (const chunk of result.textStream) {
+            fullText += chunk;
+            onChunk({
+                text: fullText,
+                delta: chunk,
+                done: false,
+            });
+        }
+
+        // Final chunk
+        onChunk({ text: fullText, delta: "", done: true });
+
+        // Get usage from result
+        const usage = await result.usage;
+
+        // Parse and validate final result using shared helper (handles primitives)
+        const validatedData = parseAndValidateStreamResponse<T>(fullText, schema, "Groq");
+        const totalTokens = usage?.totalTokens;
+        const estimatedUSD = totalTokens !== undefined ? estimateUSD(totalTokens) : undefined;
+
+        // Use shared helper with explicit undefined checks (0 is valid)
+        const cost = resolveCost(totalTokens, estimatedUSD, prompt, input);
+
+        return {
+            data: validatedData,
+            tokens: cost.tokens,
+            estimatedUSD: cost.estimatedUSD,
         };
     }
 }
