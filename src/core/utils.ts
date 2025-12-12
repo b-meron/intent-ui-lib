@@ -211,8 +211,8 @@ const buildExample = (def: ZodDef): unknown => {
     case "ZodLiteral":
       return def.value;
     case "ZodEnum":
-      // Show all enum options: "positive" | "neutral" | "negative"
-      return def.values?.join(" | ") ?? "enum";
+      // Show all options with | separator - system prompt tells model to pick ONE
+      return def.values?.join("|") ?? "enum";
     case "ZodNativeEnum":
       return "enum_value";
     case "ZodArray":
@@ -287,7 +287,10 @@ export const buildSystemPrompt = (isPrimitive: boolean): string => {
     ].join(" ")
     : [
       "You are a deterministic JSON-only function.",
-      "Output ONLY the JSON object. No text before or after.",
+      "Output ONLY valid, complete JSON. No text before or after.",
+      "CRITICAL: You MUST output ALL fields in the schema. Never leave JSON incomplete.",
+      "Keep string content brief and concise - do not exceed 200 words per field.",
+      "For enum fields shown as 'a|b|c', pick exactly ONE value (e.g., output 'a' not 'a|b|c').",
       "Use lowercase for enum values.",
       "DO NOT add notes, explanations, or any text outside the JSON.",
     ].join(" ");
@@ -321,7 +324,7 @@ export const buildUserContent = (
       `Task: ${prompt}`,
       input ? `Context: ${stableStringify(input)}` : null,
       `Required JSON format: ${schemaExample}`,
-      "Return ONLY the JSON object matching this format."
+      "Return ONLY valid, complete JSON with ALL fields. Keep content brief."
     ].filter(Boolean).join("\n");
 };
 
@@ -378,22 +381,199 @@ export const parseAndValidateResponse = <T>(
 /**
  * Safely parse JSON with fallback for malformed responses.
  * Attempts to extract JSON objects even when surrounded by extra text.
+ * Also handles LLM quirks:
+ * - Literal newlines inside JSON strings (should be escaped as \n)
+ * - Truncated JSON from hitting token limits (attempts repair)
  */
 export const safeJsonParse = (content: string): unknown => {
-  try {
-    return JSON.parse(content);
-  } catch {
-    // Try to extract JSON object from potentially malformed response
-    const jsonMatch = content.match(/^\s*(\{[\s\S]*\})\s*(?:\n|$)/);
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[1]);
-      } catch {
-        return undefined;
+  // Fix literal newlines/tabs inside JSON string values
+  const fixLiteralNewlinesInStrings = (json: string): string => {
+    let result = "";
+    let inString = false;
+    let escape = false;
+
+    for (let i = 0; i < json.length; i++) {
+      const char = json[i];
+
+      if (escape) {
+        result += char;
+        escape = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        result += char;
+        escape = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+        result += char;
+        continue;
+      }
+
+      if (inString) {
+        if (char === "\n") {
+          result += "\\n";
+        } else if (char === "\r") {
+          result += "\\r";
+        } else if (char === "\t") {
+          result += "\\t";
+        } else {
+          result += char;
+        }
+      } else {
+        result += char;
       }
     }
-    return undefined;
+
+    return result;
+  };
+
+  /**
+   * Attempt to repair truncated JSON from LLM hitting token limits.
+   * This handles cases where the LLM output is cut off mid-JSON.
+   * Strategy: Close any open strings and objects to make valid JSON.
+   */
+  const repairTruncatedJson = (json: string): string | null => {
+    const trimmed = json.trim();
+    if (!trimmed.startsWith("{")) return null;
+    if (trimmed.endsWith("}")) return trimmed; // Already complete
+
+    let repaired = trimmed;
+    let inString = false;
+    let escape = false;
+    let braceDepth = 0;
+    let bracketDepth = 0;
+
+    // Analyze the JSON structure
+    for (let i = 0; i < repaired.length; i++) {
+      const char = repaired[i];
+
+      if (escape) {
+        escape = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        escape = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (!inString) {
+        if (char === "{") braceDepth++;
+        else if (char === "}") braceDepth--;
+        else if (char === "[") bracketDepth++;
+        else if (char === "]") bracketDepth--;
+      }
+    }
+
+    // Close open strings
+    if (inString) {
+      repaired += '"';
+    }
+
+    // Close open brackets
+    while (bracketDepth > 0) {
+      repaired += "]";
+      bracketDepth--;
+    }
+
+    // Close open braces
+    while (braceDepth > 0) {
+      repaired += "}";
+      braceDepth--;
+    }
+
+    return repaired;
+  };
+
+  const tryParse = (json: string): unknown => {
+    try {
+      return JSON.parse(json);
+    } catch {
+      return undefined;
+    }
+  };
+
+  /**
+   * Find the end of a JSON object by matching braces.
+   * Returns the index after the closing brace, or -1 if not found.
+   */
+  const findJsonEnd = (str: string, startIndex: number): number => {
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = startIndex; i < str.length; i++) {
+      const char = str[i];
+
+      if (escape) {
+        escape = false;
+        continue;
+      }
+
+      if (char === "\\") {
+        escape = true;
+        continue;
+      }
+
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (!inString) {
+        if (char === "{") depth++;
+        else if (char === "}") {
+          depth--;
+          if (depth === 0) return i + 1;
+        }
+      }
+    }
+
+    return -1; // No matching close brace found
+  };
+
+  // Attempt 1: Direct parse
+  let result = tryParse(content);
+  if (result !== undefined) return result;
+
+  // Attempt 2: Fix literal newlines then parse
+  const fixed = fixLiteralNewlinesInStrings(content);
+  result = tryParse(fixed);
+  if (result !== undefined) return result;
+
+  // Find where JSON starts
+  const jsonStart = content.search(/\{/);
+  if (jsonStart === -1) return undefined;
+
+  // Attempt 3: Extract complete JSON object (handles trailing text)
+  const jsonEnd = findJsonEnd(fixed, jsonStart);
+  if (jsonEnd !== -1) {
+    const extracted = fixed.slice(jsonStart, jsonEnd);
+    result = tryParse(extracted);
+    if (result !== undefined) return result;
   }
+
+  // Attempt 4: Try to repair truncated JSON (no closing brace found)
+  const truncatedJson = fixed.slice(jsonStart);
+  const repaired = repairTruncatedJson(truncatedJson);
+  if (repaired) {
+    result = tryParse(repaired);
+    if (result !== undefined) {
+      console.warn("[safeJsonParse] Repaired truncated JSON");
+      return result;
+    }
+  }
+
+  return undefined;
 };
 
 /**

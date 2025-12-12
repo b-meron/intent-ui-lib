@@ -21,8 +21,8 @@ export const StreamingPlayground = ({ provider }: StreamingPlaygroundProps) => {
   const [showOptions, setShowOptions] = useState(false);
   const [pendingStart, setPendingStart] = useState(false);
   
-  // Provider options state
-  const [maxTokens, setMaxTokens] = useState<number | undefined>(200);
+  // Provider options state - default 500 tokens to allow for JSON structure completion
+  const [maxTokens, setMaxTokens] = useState<number | undefined>(500);
   const [temperature, setTemperature] = useState(0);
   const [topP, setTopP] = useState(1.0);
   const [frequencyPenalty, setFrequencyPenalty] = useState(0);
