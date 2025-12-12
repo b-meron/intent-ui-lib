@@ -1,4 +1,4 @@
-import type { DataExtraction } from "../../schemas";
+import type { DataExtraction } from "../../scenarios";
 import { Tag, BadgeColor, InfoBox } from "../ui";
 
 const typeColors: Record<string, BadgeColor> = {

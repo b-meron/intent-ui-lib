@@ -7,7 +7,8 @@ import {
   type AIProvider,
   type AIStreamProvider,
 } from "react-ai-query";
-import { GROQ_KEY_STORAGE, OPENAI_KEY_STORAGE, ProviderChoice } from "./helpers";
+import { GROQ_KEY_STORAGE, OPENAI_KEY_STORAGE } from "./constants";
+import { ProviderChoice } from "./types";
 import { SCENARIOS, ScenarioId, scenarioConfigs } from "./scenarios";
 import {
   Header,

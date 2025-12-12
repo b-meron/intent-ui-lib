@@ -1,4 +1,4 @@
-import type { ErrorSummary } from "../../schemas";
+import type { ErrorSummary } from "../../scenarios";
 import { Badge, BadgeColor, InfoBox } from "../ui";
 
 const severityConfig: Record<ErrorSummary["severity"], { color: BadgeColor; icon: string; border: string }> = {

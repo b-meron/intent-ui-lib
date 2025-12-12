@@ -1,4 +1,4 @@
-import type { FeedbackAnalysis } from "../../schemas";
+import type { FeedbackAnalysis } from "../../scenarios";
 import { Badge, BadgeColor } from "../ui";
 import { InfoBox, SectionLabel } from "../ui";
 

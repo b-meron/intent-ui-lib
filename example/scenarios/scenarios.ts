@@ -1,5 +1,4 @@
-import { Scenario, ScenarioId } from "./types";
-import { ScenarioConfigMap } from "./config";
+import { Scenario, ScenarioId, ScenarioConfigMap } from "./types";
 import { apiScenario, apiScenarioConfig } from "./api";
 import { errorScenario, errorScenarioConfig } from "./error";
 import { extractionScenario, extractionScenarioConfig } from "./extraction";

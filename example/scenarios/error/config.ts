@@ -1,17 +1,7 @@
-import { Scenario } from "./types";
-import { ScenarioConfig } from "./config";
-import { errorSummarySchema, ErrorSummary } from "../schemas";
-import { ErrorResult } from "../components/results";
-
-export const errorScenario: Scenario = {
-    id: "error",
-    title: "Error Summary",
-    icon: "⚠️",
-    description: "Transform technical errors into user-friendly messages",
-    placeholder: "",
-    prompt: "Explain this error to a non-technical user in a friendly, helpful way.",
-    inputType: "dropdown",
-};
+import type { ScenarioConfig } from "../types";
+import { errorSummarySchema } from "./schema";
+import type { ErrorSummary } from "./types";
+import { ErrorResult } from "../../components/results";
 
 export const errorScenarioConfig: ScenarioConfig<ErrorSummary> = {
     schema: errorSummarySchema,

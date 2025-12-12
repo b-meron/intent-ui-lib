@@ -1,5 +1,5 @@
 import { clearSessionCache } from "react-ai-query";
-import { ProviderChoice } from "../helpers";
+import { ProviderChoice } from "../types";
 
 interface HeaderProps {
   providerName: ProviderChoice;

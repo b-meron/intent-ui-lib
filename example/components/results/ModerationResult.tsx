@@ -1,4 +1,4 @@
-import type { ContentModeration } from "../../schemas";
+import type { ContentModeration } from "../../scenarios";
 import { Badge, SectionLabel, InfoPanel } from "../ui";
 
 export const ModerationResult = ({ data }: { data: ContentModeration }) => (

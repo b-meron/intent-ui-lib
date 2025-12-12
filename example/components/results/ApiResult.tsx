@@ -1,4 +1,4 @@
-import type { ApiRequest } from "../../schemas";
+import type { ApiRequest } from "../../scenarios";
 import { SectionLabel, InfoPanel } from "../ui";
 
 const methodColors: Record<string, string> = {
