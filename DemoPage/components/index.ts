@@ -16,6 +16,5 @@ export { FeatureCard, FEATURES } from "./FeatureCard";
 export { SchemaViewer } from "./SchemaViewer";
 
 // Results & UI
-export * from "./results";
 export * from "./ui";
 
