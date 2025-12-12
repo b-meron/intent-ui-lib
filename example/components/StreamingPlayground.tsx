@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { AIStreamProvider, useAIStream } from "react-ai-query";
-import { SCENARIOS } from "../scenarios";
-import { scenarioConfigs } from "../scenarioConfigs";
+import { SCENARIOS, scenarioConfigs } from "../scenarios";
 import { StreamingResponse } from "../schemas";
 import { CostBadge } from "./CostBadge";
 import { SystemPromptPreview } from "./SystemPromptPreview";

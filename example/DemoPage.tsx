@@ -8,8 +8,7 @@ import {
   type AIStreamProvider,
 } from "react-ai-query";
 import { GROQ_KEY_STORAGE, OPENAI_KEY_STORAGE, ProviderChoice } from "./helpers";
-import { SCENARIOS, ScenarioId } from "./scenarios";
-import { scenarioConfigs } from "./scenarioConfigs";
+import { SCENARIOS, ScenarioId, scenarioConfigs } from "./scenarios";
 import {
   Header,
   Footer,

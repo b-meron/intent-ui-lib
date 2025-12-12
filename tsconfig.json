@@ -14,7 +14,7 @@
     "outDir": "dist",
     "types": ["vitest/globals", "vite/client"],
     "paths": {
-      "react-ai-query": ["./dist/index.d.ts", "./src/index.ts"]
+      "react-ai-query": ["./src/index.ts", "./dist/index.d.ts"]
     }
   },
   "include": [

@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SCENARIOS, ERROR_EXAMPLES, ScenarioId } from "../example/scenarios";
-import { scenarioConfigs } from "../example/scenarioConfigs";
+import { SCENARIOS, ERROR_EXAMPLES, ScenarioId, scenarioConfigs } from "../example/scenarios";
 
 describe("Scenarios Configuration", () => {
   const scenarioIds: ScenarioId[] = ["error", "feedback", "moderation", "extraction", "api"];
