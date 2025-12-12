@@ -114,7 +114,7 @@ export function useAIStream<T>(options: UseAIStreamOptions<T>): UseAIStreamResul
     if (!isManual && (wasManual || wasManual === undefined)) {
       start();
     }
-  }, [options.manual, start]);
+  }, [options.manual]);
 
   // Cleanup on unmount
   useEffect(() => {
