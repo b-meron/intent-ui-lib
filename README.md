@@ -1080,7 +1080,7 @@ npm run typecheck # Type check
 npm run test      # Run tests
 ```
 
-Demo page in `example/DemoPage.tsx` shows all features.
+Demo page in `DemoPage.tsx` shows all features.
 
 ---
 

@@ -6,8 +6,8 @@ import {
     contentModerationSchema,
     dataExtractionSchema,
     apiRequestSchema,
-} from "../example/scenarios";
-import { ERROR_EXAMPLES, SCENARIOS } from "../example/scenarios";
+} from "../DemoPage/scenarios";
+import { ERROR_EXAMPLES, SCENARIOS } from "../DemoPage/scenarios";
 
 describe("Mock Provider - Scenario Integration", () => {
     describe("Error Summary Scenario", () => {

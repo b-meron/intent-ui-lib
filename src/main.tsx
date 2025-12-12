@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import DemoPage from "../example/DemoPage";
+import DemoPage from "../DemoPage";
 import "./main.css";
 
 const rootElement = document.getElementById("root");

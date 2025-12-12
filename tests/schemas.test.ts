@@ -5,7 +5,7 @@ import {
   contentModerationSchema,
   dataExtractionSchema,
   apiRequestSchema,
-} from "../example/scenarios";
+} from "../DemoPage/scenarios";
 
 describe("Schema Validation", () => {
   describe("errorSummarySchema", () => {

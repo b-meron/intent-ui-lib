@@ -17,10 +17,10 @@
       "react-ai-query": ["./src/index.ts", "./dist/index.d.ts"]
     }
   },
-  "include": [
+    "include": [
     "src",
     "tests",
-    "example",
+    "DemoPage",
     "tsup.config.ts",
     "vite.config.ts",
     "tailwind.config.ts",
